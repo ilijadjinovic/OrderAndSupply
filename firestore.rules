@@ -1,0 +1,132 @@
+rules_version = '2';
+
+// ============================================================================
+// FIRESTORE RULES — Sistem za naručivanje i nabavku
+//
+// Napomena za produkciju: ova pravila koriste "get()" pozive da bi proverila
+// ulogu prijavljenog korisnika (users/{uid}.role). Za veće sisteme je
+// preporučljivo dodatno uvesti Firebase Custom Claims (preko Cloud Function-a
+// pri kreiranju korisnika) radi bržih i jeftinijih provera prava pristupa.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function myProfile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function myCompanyId() { return myProfile().companyId; }
+    function myRole() { return myProfile().role; }
+    function isMasterAdmin() { return isSignedIn() && myRole() == 'master_admin'; }
+    function isCompanyMember(companyId) { return isSignedIn() && myCompanyId() == companyId && myProfile().active != false; }
+    function isAdminOf(companyId) { return isCompanyMember(companyId) && myRole() == 'admin'; }
+    function isNarucilacOf(companyId) { return isCompanyMember(companyId) && myRole() == 'narucilac'; }
+    function isIsporucilacOf(companyId) { return isCompanyMember(companyId) && myRole() == 'isporucilac'; }
+
+    // --- Platformska podešavanja (Master Admin) ---
+    match /platform/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isMasterAdmin();
+    }
+
+    // --- Firme ---
+    match /companies/{companyId} {
+      allow read: if isMasterAdmin() || isCompanyMember(companyId);
+      allow create: if isSignedIn(); // registracija nove firme (Poglavlje 2.2)
+      allow update: if isMasterAdmin() || isAdminOf(companyId);
+      allow delete: if isMasterAdmin();
+
+      // --- Korisnički indeks unutar firme (za listanje) ---
+      match /usersIndex/{uid} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdminOf(companyId) || isMasterAdmin();
+      }
+
+      // --- Lokacije firme ---
+      match /locations/{locId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdminOf(companyId);
+      }
+
+      // --- Kategorije ---
+      match /categories/{catId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdminOf(companyId);
+      }
+
+      // --- Dobavljači + podkolekcije (lokacije, proizvodi) ---
+      match /suppliers/{supplierId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdminOf(companyId);
+
+        match /locations/{locId} {
+          allow read: if isCompanyMember(companyId);
+          allow write: if isAdminOf(companyId);
+        }
+        match /products/{productId} {
+          allow read: if isCompanyMember(companyId);
+          allow write: if isAdminOf(companyId);
+        }
+      }
+
+      // --- Šabloni / omiljene liste / ponavljajuće narudžbine ---
+      match /templates/{templateId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isNarucilacOf(companyId) || isAdminOf(companyId);
+      }
+
+      // --- Narudžbine + sve podkolekcije ---
+      match /orders/{orderId} {
+        allow read: if isCompanyMember(companyId);
+        allow create: if isNarucilacOf(companyId);
+        allow update: if isAdminOf(companyId) || isNarucilacOf(companyId) || isIsporucilacOf(companyId);
+        allow delete: if isAdminOf(companyId);
+
+        match /items/{itemId} {
+          allow read: if isCompanyMember(companyId);
+          allow write: if isCompanyMember(companyId);
+        }
+        match /purchases/{purchaseId} {
+          allow read: if isCompanyMember(companyId);
+          allow write: if isCompanyMember(companyId);
+        }
+        match /deliveryLocations/{locId} {
+          allow read: if isCompanyMember(companyId);
+          allow write: if isCompanyMember(companyId);
+        }
+        match /claims/{claimId} {
+          allow read: if isCompanyMember(companyId);
+          allow write: if isCompanyMember(companyId);
+        }
+        match /messages/{msgId} {
+          allow read: if isCompanyMember(companyId);
+          allow create: if isCompanyMember(companyId);
+        }
+        match /attachments/{attId} {
+          allow read: if isCompanyMember(companyId);
+          allow create: if isCompanyMember(companyId);
+        }
+      }
+
+      // --- Notifikacije (svaki korisnik čita samo svoje) ---
+      match /notifications/{notifId} {
+        allow read: if isCompanyMember(companyId) && (resource.data.toUid == request.auth.uid || isAdminOf(companyId));
+        allow create: if isCompanyMember(companyId);
+        allow update: if isCompanyMember(companyId) && resource.data.toUid == request.auth.uid;
+      }
+
+      // --- Audit log — upis dozvoljen svima u firmi, brisanje nikom ---
+      match /auditLogs/{logId} {
+        allow read: if isAdminOf(companyId) || isMasterAdmin();
+        allow create: if isCompanyMember(companyId);
+      }
+    }
+
+    // --- Korisnici (top-level, keyed by Firebase Auth uid) ---
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isMasterAdmin() || isAdminOf(resource.data.companyId));
+      allow create: if isSignedIn() && (request.auth.uid == uid || isAdminOf(request.resource.data.companyId));
+      allow update: if isSignedIn() && (request.auth.uid == uid || isAdminOf(resource.data.companyId));
+      allow delete: if isMasterAdmin();
+    }
+  }
+}
