@@ -3,12 +3,12 @@
 // (Project settings → General → Your apps → SDK setup and configuration)
 // ============================================================================
 export const firebaseConfig = {
-  apiKey: "UNESI_SVOJ_API_KEY",
-  authDomain: "UNESI_SVOJ_PROJEKAT.firebaseapp.com",
-  projectId: "UNESI_SVOJ_PROJEKAT_ID",
-  storageBucket: "UNESI_SVOJ_PROJEKAT.appspot.com",
-  messagingSenderId: "UNESI_SENDER_ID",
-  appId: "UNESI_APP_ID",
+  apiKey: "AIzaSyDwMRzHVkS_7U_vBIQu7ImCLzU2VQqlnhw",
+  authDomain: "orderandsupply.firebaseapp.com",
+  projectId: "orderandsupply",
+  storageBucket: "orderandsupply.firebasestorage.app",
+  messagingSenderId: "967563507485",
+  appId: "1:967563507485:web:210d8e5dd202259c4cd3f4"
 };
 
 // Napomena:
