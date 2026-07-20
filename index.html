@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prijava — Sistem za naručivanje i nabavku</title>
+<link rel="stylesheet" href="./css/base.css" />
+</head>
+<body>
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="brand-mark">N</span>
+      <h2 data-i18n="app_name">Nabavka</h2>
+    </div>
+    <p class="muted" style="margin-bottom:20px;">Sistem za naručivanje i nabavku robe</p>
+
+    <form id="login-form">
+      <div class="field">
+        <label data-i18n="email">Email</label>
+        <input type="email" id="email" required autocomplete="username" />
+      </div>
+      <div class="field">
+        <label data-i18n="password">Lozinka</label>
+        <input type="password" id="password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;" data-i18n="login_btn">Prijavi se</button>
+    </form>
+
+    <div class="auth-foot">
+      <a href="#" id="forgot-link" data-i18n="forgot_password">Zaboravljena lozinka?</a>
+      <div class="divider"></div>
+      <span class="muted">Nemate firmu registrovanu?</span>
+      <a href="./register-company.html" data-i18n="register_company">Registruj firmu</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { login, resetPassword, getUserProfile, redirectForRole } from "./js/auth.js";
+  import { toast, escapeHtml } from "./js/utils.js";
+  import { loadLang } from "./js/i18n.js";
+  import { onAuthStateChanged, auth } from "./js/firebase-init.js";
+
+  loadLang();
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      const profile = await getUserProfile(user.uid);
+      if (profile) window.location.href = redirectForRole(profile.role);
+    }
+  });
+
+  document.getElementById("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    try {
+      const cred = await login(email, password);
+      const profile = await getUserProfile(cred.user.uid);
+      if (!profile) { toast("Nalog nije povezan ni sa jednom firmom.", "error"); return; }
+      if (profile.active === false) { toast("Vaš nalog je deaktiviran.", "error"); return; }
+      window.location.href = redirectForRole(profile.role);
+    } catch (err) {
+      toast("Neuspešna prijava: pogrešan email ili lozinka.", "error");
+    }
+  });
+
+  document.getElementById("forgot-link").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim();
+    if (!email) { toast("Prvo unesite email adresu.", "error"); return; }
+    try {
+      await resetPassword(email);
+      toast("Poslat je link za resetovanje lozinke.", "success");
+    } catch {
+      toast("Greška pri slanju emaila.", "error");
+    }
+  });
+</script>
+</body>
+</html>

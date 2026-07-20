@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Katalog proizvoda</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div><div class="eyebrow">Admin firme</div><h1 data-i18n="catalog">Katalog proizvoda</h1></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="products">Proizvodi dobavljača</button>
+      <button class="tab-btn" data-tab="categories">Kategorije</button>
+    </div>
+
+    <div id="tab-products">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Izaberi dobavljača</h2>
+          <select id="supplier-select" style="max-width:280px;"></select>
+        </div>
+        <form id="product-form" class="form-row">
+          <div class="field"><label>Naziv</label><input type="text" id="p-name" required /></div>
+          <div class="field"><label>Šifra</label><input type="text" id="p-code" /></div>
+          <div class="field"><label>Barkod</label><input type="text" id="p-barcode" /></div>
+          <div class="field"><label>Jedinica mere</label><input type="text" id="p-unit" value="kom" required /></div>
+          <div class="field"><label>Kategorija</label><select id="p-category"></select></div>
+          <div class="field"><label>PDV stopa (%)</label><input type="number" id="p-vat" value="20" /></div>
+          <div class="field"><label>Minimalna količina</label><input type="number" id="p-min" value="1" /></div>
+          <div class="field" style="display:flex;align-items:end;"><button type="submit" class="btn btn-amber" style="height:42px;width:100%;">+ Dodaj proizvod</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Naziv</th><th>Šifra</th><th>JM</th><th>Kategorija</th><th>PDV</th><th>Min. kol.</th><th></th></tr></thead>
+            <tbody id="products-body"><tr class="empty-row"><td colspan="7">Izaberite dobavljača.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-categories" class="hidden">
+      <div class="panel">
+        <form id="category-form" class="form-row" style="align-items:end;">
+          <div class="field"><label>Naziv kategorije</label><input type="text" id="c-name" required /></div>
+          <button type="submit" class="btn btn-amber" style="height:42px;">+ Dodaj</button>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="table-wrap">
+          <table class="data-table"><thead><tr><th>Naziv</th><th></th></tr></thead><tbody id="categories-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script type="module" src="./js/page-admin-catalog.js"></script>
+</body>
+</html>

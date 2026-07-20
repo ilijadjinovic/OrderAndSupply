@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Korisnici — Admin firme</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div><div class="eyebrow">Admin firme</div><h1 data-i18n="users">Korisnici</h1></div>
+      <button class="btn btn-amber" id="new-user-btn">+ Novi korisnik</button>
+    </div>
+
+    <div class="panel">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Ime</th><th>Email</th><th>Uloga</th><th>Status</th><th></th></tr></thead>
+          <tbody id="users-body"><tr class="empty-row"><td colspan="5">Učitavanje...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay hidden" id="user-modal">
+  <div class="modal-card">
+    <div class="modal-head"><h2>Novi korisnik</h2><button class="icon-btn" id="close-modal">✕</button></div>
+    <form id="user-form">
+      <div class="field"><label>Ime i prezime</label><input type="text" id="u-name" required /></div>
+      <div class="field"><label>Email</label><input type="email" id="u-email" required /></div>
+      <div class="field"><label>Privremena lozinka</label><input type="password" id="u-password" required minlength="6" /></div>
+      <div class="field">
+        <label>Uloga</label>
+        <select id="u-role">
+          <option value="admin">Admin firme</option>
+          <option value="narucilac" selected>Naručilac</option>
+          <option value="isporucilac">Isporučilac</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Kreiraj nalog</button>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="./js/page-admin-users.js"></script>
+</body>
+</html>

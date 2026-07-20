@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Podešavanja firme</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div><div class="eyebrow">Admin firme</div><h1 data-i18n="settings">Podešavanja</h1></div>
+    </div>
+
+    <form id="settings-form">
+      <div class="panel">
+        <h3>Osnovni podaci</h3>
+        <div class="form-row">
+          <div class="field"><label>Naziv firme</label><input type="text" id="s-name" /></div>
+          <div class="field"><label>PIB</label><input type="text" id="s-pib" /></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Adresa</label><input type="text" id="s-address" /></div>
+          <div class="field"><label>Telefon</label><input type="tel" id="s-phone" /></div>
+        </div>
+        <div class="field"><label>Radno vreme</label><input type="text" id="s-hours" placeholder="npr. 08-16h radnim danima" /></div>
+      </div>
+
+      <div class="panel">
+        <h3>Lokalizacija</h3>
+        <div class="form-row">
+          <div class="field"><label>Valuta</label><select id="s-currency"><option value="RSD">RSD</option><option value="EUR">EUR</option><option value="USD">USD</option></select></div>
+          <div class="field"><label>Jezik</label><select id="s-language"><option value="sr">Srpski</option><option value="en">English</option></select></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Dodela isporučioca (Poglavlje 4.2)</h3>
+        <div class="field">
+          <select id="s-assignment">
+            <option value="automatski">Sistem automatski dodeljuje slobodnog isporučioca</option>
+            <option value="admin_bira">Admin firme ručno bira isporučioca</option>
+            <option value="narucilac_bira">Naručilac sam bira isporučioca</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>GPS praćenje (Poglavlje 10.2)</h3>
+        <div class="checkbox-row"><input type="checkbox" id="s-gps" /><label style="margin:0;">Omogući naručiocima procenjeno vreme dolaska isporučioca</label></div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Sačuvaj podešavanja</button>
+    </form>
+  </main>
+</div>
+<script type="module" src="./js/page-admin-settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Registracija firme</title>
+<link rel="stylesheet" href="./css/base.css" />
+</head>
+<body>
+<div class="auth-shell">
+  <div class="auth-card wide">
+    <div class="auth-logo">
+      <span class="brand-mark">N</span>
+      <h2>Registracija firme</h2>
+    </div>
+    <p class="muted" style="margin-bottom:20px;">Unesite osnovne podatke firme i kreirajte Admin nalog (Poglavlje 2.2).</p>
+
+    <form id="register-form">
+      <h3>Podaci firme</h3>
+      <div class="form-row">
+        <div class="field"><label>Naziv firme</label><input type="text" id="companyName" required /></div>
+        <div class="field"><label>PIB</label><input type="text" id="pib" required /></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Matični broj (MB)</label><input type="text" id="mb" required /></div>
+        <div class="field"><label>Telefon</label><input type="tel" id="phone" required /></div>
+      </div>
+      <div class="field"><label>Adresa</label><input type="text" id="address" required /></div>
+      <div class="form-row">
+        <div class="field">
+          <label>Valuta</label>
+          <select id="currency"><option value="RSD">RSD</option><option value="EUR">EUR</option><option value="USD">USD</option></select>
+        </div>
+        <div class="field">
+          <label>Jezik</label>
+          <select id="language"><option value="sr">Srpski</option><option value="en">English</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Vremenska zona</label>
+        <select id="timezone">
+          <option value="Europe/Belgrade">Europe/Belgrade</option>
+          <option value="Europe/Zagreb">Europe/Zagreb</option>
+          <option value="Europe/Vienna">Europe/Vienna</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+      <h3>Admin nalog</h3>
+      <div class="form-row">
+        <div class="field"><label>Ime i prezime</label><input type="text" id="adminName" required /></div>
+        <div class="field"><label>Email (nalog za prijavu)</label><input type="email" id="email" required /></div>
+      </div>
+      <div class="field"><label>Lozinka</label><input type="password" id="password" required minlength="6" /></div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%;">Registruj firmu</button>
+    </form>
+
+    <div class="auth-foot">
+      <span class="muted">Već imate nalog?</span>
+      <a href="./index.html">Prijavite se</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { registerCompany, redirectForRole } from "./js/auth.js";
+  import { toast } from "./js/utils.js";
+
+  document.getElementById("register-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      await registerCompany({
+        companyName: companyName.value.trim(),
+        pib: pib.value.trim(),
+        mb: mb.value.trim(),
+        address: address.value.trim(),
+        phone: phone.value.trim(),
+        email: email.value.trim(),
+        currency: currency.value,
+        language: language.value,
+        timezone: timezone.value,
+        adminName: adminName.value.trim(),
+        password: password.value,
+      });
+      toast("Firma je registrovana. Dobrodošli!", "success");
+      window.location.href = redirectForRole("admin");
+    } catch (err) {
+      console.error(err);
+      toast(err.message || "Greška pri registraciji.", "error");
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

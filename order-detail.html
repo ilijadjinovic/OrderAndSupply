@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Narudžbina — detalji</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Narudžbina</div>
+        <h1 id="order-number" class="mono">—</h1>
+        <p id="order-meta" class="muted"></p>
+      </div>
+      <div id="action-bar" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div class="panel">
+      <div id="status-track" class="status-track"></div>
+    </div>
+
+    <div class="form-row" style="align-items:start;">
+      <div>
+        <div class="panel">
+          <div class="panel-head"><h2>Artikli</h2></div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Artikal</th><th>Dobavljač</th><th>Traženo</th><th>Isporuka</th><th>Napomena</th><th>Status nabavke</th></tr></thead>
+              <tbody id="items-body"><tr class="empty-row"><td colspan="6">Učitavanje...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel" id="purchases-panel"></div>
+        <div class="panel" id="delivery-panel"></div>
+        <div class="panel" id="receipt-panel"></div>
+        <div class="panel" id="claims-panel"></div>
+      </div>
+
+      <div>
+        <div class="panel" id="qr-panel"></div>
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="chat">Poruke</h2></div>
+          <div class="chat-box">
+            <div class="chat-messages" id="chat-messages"></div>
+            <form class="chat-input-row" id="chat-form">
+              <input type="text" id="chat-input" placeholder="Napišite poruku..." />
+              <button class="btn btn-primary btn-sm" type="submit">Pošalji</button>
+            </form>
+          </div>
+        </div>
+        <div class="panel" id="attachments-panel">
+          <div class="panel-head"><h2 data-i18n="attachments">Prilozi</h2></div>
+          <input type="file" id="attachment-file" accept="image/*" />
+          <select id="attachment-type" style="margin-top:8px;">
+            <option value="foto_robe">Fotografija robe</option>
+            <option value="racun">Fiskalni račun</option>
+            <option value="foto_isporuke">Fotografija isporuke</option>
+          </select>
+          <input type="text" id="receipt-number" placeholder="Broj računa (opciono)" style="margin-top:8px;" />
+          <button class="btn btn-outline btn-sm" id="upload-btn" style="margin-top:8px;width:100%;">⬆ Otpremi</button>
+          <div id="attachments-list" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay hidden" id="claim-modal">
+  <div class="modal-card">
+    <div class="modal-head"><h2 data-i18n="open_claim">Otvori reklamaciju</h2><button class="icon-btn" id="close-claim-modal">✕</button></div>
+    <form id="claim-form">
+      <div class="field"><label>Artikal</label><input type="text" id="claim-item" required /></div>
+      <div class="form-row">
+        <div class="field"><label data-i18n="requested">Traženo</label><input type="number" id="claim-requested" required /></div>
+        <div class="field"><label data-i18n="received">Primljeno</label><input type="number" id="claim-received" required /></div>
+      </div>
+      <div class="field"><label>Opis problema</label><textarea id="claim-desc" rows="3"></textarea></div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Otvori reklamaciju</button>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="./js/page-order-detail.js"></script>
+</body>
+</html>

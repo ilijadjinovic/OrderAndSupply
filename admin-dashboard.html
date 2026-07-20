@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dashboard — Admin firme</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow" id="company-name-eyebrow">Firma</div>
+        <h1 data-i18n="dashboard">Kontrolna tabla</h1>
+      </div>
+      <a class="btn btn-amber" href="./admin-users.html">+ Novi korisnik</a>
+    </div>
+
+    <div class="stat-grid" id="stat-cards"></div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Broj narudžbina kroz vreme (poslednjih 14 dana)</h2></div>
+      <div id="chart-orders" style="display:flex;align-items:flex-end;gap:6px;height:140px;"></div>
+    </div>
+
+    <div class="form-row">
+      <div class="panel">
+        <h3>Prosečno vreme obrade narudžbine</h3>
+        <div class="stat-value" id="avg-processing-time" style="font-family:var(--font-display);font-size:30px;font-weight:800;">—</div>
+      </div>
+      <div class="panel">
+        <h3>Procenat uspešne nabavke / broj reklamacija</h3>
+        <div id="success-rate" style="font-family:var(--font-display);font-size:30px;font-weight:800;">—</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2 data-i18n="orders">Narudžbine</h2>
+        <input type="text" id="order-search" placeholder="Pretraga po broju narudžbine..." style="max-width:260px;" />
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Broj</th><th>Naručilac</th><th>Isporučilac</th><th>Prioritet</th><th>Status</th><th>Kreirana</th></tr></thead>
+          <tbody id="orders-body"><tr class="empty-row"><td colspan="6">Učitavanje...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="./js/page-dash-admin.js"></script>
+</body>
+</html>

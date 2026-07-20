@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dashboard — Isporučilac</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div><div class="eyebrow">Isporučilac</div><h1 data-i18n="dashboard">Kontrolna tabla</h1></div>
+    </div>
+
+    <div class="stat-grid" id="stat-cards"></div>
+
+    <div class="panel">
+      <div class="panel-head"><h2 data-i18n="my_deliveries">Moje isporuke</h2></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Broj</th><th>Naručilac</th><th>Prioritet</th><th>Status</th><th>Kreirana</th></tr></thead>
+          <tbody id="orders-body"><tr class="empty-row"><td colspan="5">Učitavanje...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+<script type="module" src="./js/page-dash-isporucilac.js"></script>
+</body>
+</html>

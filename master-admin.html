@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Master Admin — Firme na platformi</title>
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/components.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Master Admin</div>
+        <h1>Firme na platformi</h1>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="global-stats"></div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Sve registrovane firme</h2></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Naziv</th><th>PIB</th><th>Email</th><th>Status</th><th>Registrovana</th><th></th></tr></thead>
+          <tbody id="companies-body"><tr class="empty-row"><td colspan="6">Učitavanje...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2 data-i18n="audit_log">Istorija / audit log</h2><span class="muted">Prikazuje se audit log izabrane firme</span></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Vreme</th><th>Akcija</th><th>Ko</th><th>Detalji</th></tr></thead>
+          <tbody id="audit-body"><tr class="empty-row"><td colspan="4">Izaberite firmu iz tabele iznad.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="./js/page-master-admin.js"></script>
+</body>
+</html>
