@@ -55,10 +55,10 @@ export function renderNav({ companyId, uid, profile }) {
     <header class="topbar">
       <button class="icon-btn" id="menu-toggle" aria-label="Meni">☰</button>
       <div class="topbar-spacer"></div>
-      <select id="lang-switch" class="lang-switch" aria-label="Jezik">
-        <option value="sr">SR</option>
-        <option value="en">EN</option>
-      </select>
+      <div class="lang-toggle" id="lang-toggle" role="group" aria-label="Jezik">
+        <button type="button" class="lang-option" data-lang="sr">SR</button>
+        <button type="button" class="lang-option" data-lang="en">EN</button>
+      </div>
       <div class="notif-wrap">
         <button class="icon-btn" id="notif-btn" aria-label="Notifikacije">🔔<span id="notif-dot" class="notif-dot hidden"></span></button>
         <div class="notif-panel hidden" id="notif-panel"></div>
@@ -71,8 +71,20 @@ export function renderNav({ companyId, uid, profile }) {
     </header>
   `;
 
-  document.getElementById("lang-switch").value = currentLang;
-  document.getElementById("lang-switch").addEventListener("change", (e) => setLang(e.target.value));
+  const langToggle = document.getElementById("lang-toggle");
+  const syncLangToggle = () => {
+    langToggle.querySelectorAll(".lang-option").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lang === currentLang);
+    });
+  };
+  syncLangToggle();
+  langToggle.querySelectorAll(".lang-option").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.lang === currentLang) return;
+      await setLang(btn.dataset.lang);
+      syncLangToggle();
+    });
+  });
   document.getElementById("logout-btn").addEventListener("click", () => logout());
   document.getElementById("menu-toggle").addEventListener("click", () => {
     document.querySelector(".sidebar").classList.toggle("open");
