@@ -15,28 +15,30 @@ requireAuth([ROLES.NARUCILAC], (user, profile) => {
 });
 
 async function load() {
-  const grid = document.getElementById("templates-grid");
-  grid.innerHTML = `<p class="muted">Učitavanje...</p>`;
+  const body = document.getElementById("templates-body");
+  body.innerHTML = `<tr class="empty-row"><td colspan="4">Učitavanje...</td></tr>`;
   const list = await getTemplates(companyId, activeType);
-  if (!list.length) { grid.innerHTML = `<p class="muted">Nema sačuvanih stavki u ovoj kategoriji.</p>`; return; }
+  if (!list.length) { body.innerHTML = `<tr class="empty-row"><td colspan="4">Nema sačuvanih stavki u ovoj kategoriji.</td></tr>`; return; }
 
-  grid.innerHTML = list.map((t) => `
-    <div class="click-card">
-      <h3>${escapeHtml(t.name)}</h3>
-      <p class="muted">${t.items.length} artikala</p>
-      ${t.type === "ponavljajuca" ? `<p style="font-size:12.5px;">Ponavlja se: ${(t.recurringDays || []).join(", ") || "—"} ${isDueToday(t) ? '<span class="badge badge-amber">Danas je na redu</span>' : ""}</p>` : ""}
-      <ul style="font-size:12.5px;color:var(--ink-500);padding-left:16px;margin:8px 0;">
-        ${t.items.slice(0, 4).map((i) => `<li>${escapeHtml(i.productName)} — ${i.quantity} ${escapeHtml(i.unit)}</li>`).join("")}
-        ${t.items.length > 4 ? `<li>+ ${t.items.length - 4} još...</li>` : ""}
-      </ul>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <a class="btn btn-sm btn-amber" href="./new-order.html?template=${t.id}">Naruči</a>
-        <button class="btn btn-sm btn-danger" data-id="${t.id}">Obriši</button>
-      </div>
-    </div>
-  `).join("");
+  body.innerHTML = list.map((t) => {
+    const preview = t.items.slice(0, 3).map((i) => `${escapeHtml(i.productName)} (${i.quantity} ${escapeHtml(i.unit)})`).join(", ");
+    const more = t.items.length > 3 ? ` + ${t.items.length - 3} još` : "";
+    const recurring = t.type === "ponavljajuca"
+      ? `${(t.recurringDays || []).join(", ") || "—"} ${isDueToday(t) ? '<span class="badge badge-amber">Danas</span>' : ""}`
+      : `<span class="muted">—</span>`;
+    return `
+      <tr>
+        <td><strong>${escapeHtml(t.name)}</strong><div class="muted" style="font-size:12px;">${t.items.length} artikala</div></td>
+        <td class="muted" style="font-size:13px;">${preview}${more}</td>
+        <td>${recurring}</td>
+        <td>
+          <a class="btn btn-sm btn-amber" href="./new-order.html?template=${t.id}">Naruči</a>
+          <button class="btn btn-sm btn-danger" data-id="${t.id}">Obriši</button>
+        </td>
+      </tr>`;
+  }).join("");
 
-  grid.querySelectorAll("button[data-id]").forEach((btn) => {
+  body.querySelectorAll("button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm("Obrisati ovu stavku?")) return;
       await deleteTemplate(companyId, btn.dataset.id);

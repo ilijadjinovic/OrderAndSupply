@@ -26,7 +26,14 @@
       <button class="tab-btn" data-type="ponavljajuca">Ponavljajuće narudžbine</button>
     </div>
 
-    <div class="card-grid" id="templates-grid"><p class="muted">Učitavanje...</p></div>
+    <div class="panel">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Naziv</th><th>Stavke</th><th>Ponavljanje</th><th></th></tr></thead>
+          <tbody id="templates-body"><tr class="empty-row"><td colspan="4">Učitavanje...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </main>
 </div>
 <script type="module" src="./js/page-templates.js"></script>

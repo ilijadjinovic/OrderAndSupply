@@ -37,7 +37,18 @@
         <button type="button" class="tab-btn active" data-mode="catalog">Iz kataloga</button>
         <button type="button" class="tab-btn" data-mode="manual">Slobodan unos</button>
       </div>
-      <div id="product-list" class="card-grid"></div>
+      <div id="catalog-entry">
+        <div class="field" style="max-width:320px;">
+          <label>Pretraga</label>
+          <input type="text" id="product-search" placeholder="Ukucajte naziv proizvoda..." />
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Naziv</th><th>JM</th><th>Šifra</th><th style="width:100px;">Količina</th><th>Napomena</th><th></th></tr></thead>
+            <tbody id="product-list"><tr class="empty-row"><td colspan="6">Izaberite dobavljača.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
       <div id="manual-entry" class="hidden">
         <p class="hint" style="margin-bottom:14px;">Za artikle koji nisu u katalogu dobavljača — unesite samo naziv i količinu, bez šifre ili barkoda.</p>
         <div class="form-row">

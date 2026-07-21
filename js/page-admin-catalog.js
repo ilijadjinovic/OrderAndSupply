@@ -62,12 +62,13 @@ document.getElementById("product-form").addEventListener("submit", async (e) => 
   e.preventDefault();
   const supplierId = document.getElementById("supplier-select").value;
   if (!supplierId) { toast("Prvo izaberite dobavljača.", "error"); return; }
+  const lastCategory = document.getElementById("p-category").value; // zapamti izabranu kategoriju
   await addProduct(companyId, supplierId, {
     name: document.getElementById("p-name").value.trim(),
     code: document.getElementById("p-code").value.trim(),
     barcode: document.getElementById("p-barcode").value.trim(),
     unit: document.getElementById("p-unit").value.trim(),
-    categoryId: document.getElementById("p-category").value,
+    categoryId: lastCategory,
     vatRate: Number(document.getElementById("p-vat").value) || 0,
     minQuantity: Number(document.getElementById("p-min").value) || 1,
     actorName,
@@ -77,6 +78,7 @@ document.getElementById("product-form").addEventListener("submit", async (e) => 
   document.getElementById("p-unit").value = "kom";
   document.getElementById("p-vat").value = 20;
   document.getElementById("p-min").value = 1;
+  document.getElementById("p-category").value = lastCategory; // ostavi istu kategoriju aktivnu
 });
 
 function renderCategories(cats) {

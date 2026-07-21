@@ -45,33 +45,34 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   const supplierId = e.target.value;
   const pickupSelect = document.getElementById("pickup-select");
   const productList = document.getElementById("product-list");
+  const searchInput = document.getElementById("product-search");
   pickupSelect.innerHTML = `<option value="any">Bilo koja lokacija</option>`;
-  productList.innerHTML = "";
+  productList.innerHTML = `<tr class="empty-row"><td colspan="6">Izaberite dobavljača.</td></tr>`;
+  searchInput.value = "";
   if (!supplierId) return;
 
   const [locs, products] = await Promise.all([getSupplierLocations(companyId, supplierId), getProducts(companyId, supplierId)]);
   pickupSelect.innerHTML += locs.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
 
-  if (!products.length) { productList.innerHTML = `<p class="muted">Ovaj dobavljač još nema proizvoda u katalogu.</p>`; return; }
+  if (!products.length) { productList.innerHTML = `<tr class="empty-row"><td colspan="6">Ovaj dobavljač još nema proizvoda u katalogu.</td></tr>`; return; }
   const supplier = suppliers.find((s) => s.id === supplierId);
   productList.innerHTML = products.map((p) => `
-    <div class="click-card" data-product-id="${p.id}">
-      <h3>${escapeHtml(p.name)}</h3>
-      <p class="muted">${escapeHtml(p.unit)}${p.code ? " · šifra " + escapeHtml(p.code) : ""}</p>
-      <div class="form-row" style="margin-top:8px;">
-        <input type="number" min="0.1" step="0.1" value="1" class="qty-input" style="width:100%;" />
-        <input type="text" placeholder="Napomena" class="note-input" style="width:100%;" />
-      </div>
-      <button class="btn btn-sm btn-amber" style="margin-top:8px;width:100%;" data-add="${p.id}">+ Dodaj u listu</button>
-    </div>
-  `).join("");
+    <tr data-product-id="${p.id}" data-name="${escapeHtml(p.name.toLowerCase())}">
+      <td><strong>${escapeHtml(p.name)}</strong></td>
+      <td>${escapeHtml(p.unit)}</td>
+      <td class="mono">${escapeHtml(p.code || "—")}</td>
+      <td><input type="number" min="0.1" step="0.1" value="1" class="qty-input" style="width:80px;" /></td>
+      <td><input type="text" placeholder="Napomena" class="note-input" /></td>
+      <td><button class="btn btn-sm btn-amber" data-add="${p.id}">+ Dodaj</button></td>
+    </tr>
+  `).join("") + `<tr class="empty-row hidden" id="product-search-empty"><td colspan="6">Nema proizvoda za taj upit.</td></tr>`;
 
   productList.querySelectorAll("button[data-add]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const card = btn.closest(".click-card");
+      const row = btn.closest("tr");
       const product = products.find((p) => p.id === btn.dataset.add);
-      const qty = Number(card.querySelector(".qty-input").value) || 1;
-      const note = card.querySelector(".note-input").value.trim();
+      const qty = Number(row.querySelector(".qty-input").value) || 1;
+      const note = row.querySelector(".note-input").value.trim();
       const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
       cart.push({
         tempId: uid("item"), supplierId, supplierName: supplier?.name || "Dobavljač",
@@ -85,12 +86,25 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   });
 });
 
+// --- Pretraga kataloga (filtrira tabelu po nazivu, ne dira već unete količine/napomene) ---
+document.getElementById("product-search").addEventListener("input", (e) => {
+  const term = e.target.value.trim().toLowerCase();
+  let anyVisible = false;
+  document.querySelectorAll("#product-list tr[data-product-id]").forEach((row) => {
+    const match = !term || row.dataset.name.includes(term);
+    row.classList.toggle("hidden", !match);
+    if (match) anyVisible = true;
+  });
+  const emptyRow = document.getElementById("product-search-empty");
+  if (emptyRow) emptyRow.classList.toggle("hidden", anyVisible);
+});
+
 // --- Entry mode tabs (Iz kataloga / Slobodan unos) ---
 document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
-    document.getElementById("product-list").classList.toggle("hidden", btn.dataset.mode !== "catalog");
+    document.getElementById("catalog-entry").classList.toggle("hidden", btn.dataset.mode !== "catalog");
     document.getElementById("manual-entry").classList.toggle("hidden", btn.dataset.mode !== "manual");
   });
 });

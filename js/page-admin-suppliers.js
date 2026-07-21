@@ -14,29 +14,30 @@ requireAuth([ROLES.ADMIN], (user, profile) => {
 });
 
 function render(suppliers) {
-  const grid = document.getElementById("suppliers-grid");
-  if (!suppliers.length) { grid.innerHTML = `<p class="muted">Nema dobavljača. Dodajte prvog dobavljača.</p>`; return; }
-  grid.innerHTML = suppliers.map((s) => `
-    <div class="click-card">
-      <h3>${escapeHtml(s.name)}</h3>
-      <p class="muted">${escapeHtml(s.contact || "Bez kontakt osobe")}</p>
-      <p style="font-size:13px;">${escapeHtml(s.phone || "")} ${s.email ? "· " + escapeHtml(s.email) : ""}</p>
-      <div style="display:flex;gap:8px;margin-top:10px;">
+  const body = document.getElementById("suppliers-body");
+  if (!suppliers.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">Nema dobavljača. Dodajte prvog dobavljača.</td></tr>`; return; }
+  body.innerHTML = suppliers.map((s) => `
+    <tr>
+      <td><strong>${escapeHtml(s.name)}</strong></td>
+      <td>${escapeHtml(s.contact || "—")}</td>
+      <td>${escapeHtml(s.phone || "—")}</td>
+      <td>${escapeHtml(s.email || "—")}</td>
+      <td>
         <button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 Lokacije</button>
         <a class="btn btn-sm btn-outline" href="./admin-catalog.html?supplier=${s.id}">📦 Katalog</a>
         <button class="btn btn-sm btn-danger" data-action="delete" data-id="${s.id}">Obriši</button>
-      </div>
-    </div>
+      </td>
+    </tr>
   `).join("");
 
-  grid.querySelectorAll("button[data-action=delete]").forEach((btn) => {
+  body.querySelectorAll("button[data-action=delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm("Obrisati dobavljača?")) return;
       await deleteSupplier(companyId, btn.dataset.id);
       toast("Dobavljač obrisan.", "success");
     });
   });
-  grid.querySelectorAll("button[data-action=locations]").forEach((btn) => {
+  body.querySelectorAll("button[data-action=locations]").forEach((btn) => {
     btn.addEventListener("click", () => openLocations(btn.dataset.id, btn.dataset.name));
   });
 }
