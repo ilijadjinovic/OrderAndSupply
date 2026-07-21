@@ -266,16 +266,12 @@ function renderDeliveryPanel() {
       <div>${statusBadge[l.status]}</div>
       <div>
         ${isDeliverer && l.status === "ceka" ? `<button class="btn btn-sm btn-amber" data-deliver="${l.id}">Označi isporučeno</button>` : ""}
-        ${isOrderer && l.status === "isporuceno" ? `<button class="btn btn-sm btn-primary" data-confirm-loc="${l.id}">Potvrdi prijem</button>` : ""}
       </div>
     </div>
   `).join("");
 
   panel.querySelectorAll("button[data-deliver]").forEach((btn) => {
     btn.addEventListener("click", () => markLocationDelivered(companyId, orderId, btn.dataset.deliver, profile.name));
-  });
-  panel.querySelectorAll("button[data-confirm-loc]").forEach((btn) => {
-    btn.addEventListener("click", () => confirmLocationReceipt(companyId, orderId, btn.dataset.confirmLoc, profile.name));
   });
 }
 
@@ -324,10 +320,20 @@ function renderReceiptPanel() {
       }
     }
     await confirmReceipt(companyId, orderId, { actorUid: uidValue, actorName: profile.name, missingItemsToCarryOver: carryOver });
+    await Promise.all(deliveryLocations.map((l) => confirmLocationReceipt(companyId, orderId, l.id, profile.name)));
     toast("Prijem potvrđen. Narudžbina je zatvorena.", "success");
   });
 
-  document.getElementById("open-claim-btn").addEventListener("click", () => document.getElementById("claim-modal").classList.remove("hidden"));
+  document.getElementById("open-claim-btn").addEventListener("click", () => {
+    const claimSelect = document.getElementById("claim-item");
+    claimSelect.innerHTML = items.map((i) =>
+      `<option value="${escapeHtml(i.productName)}" data-qty="${i.quantity}">${escapeHtml(i.productName)} (${i.quantity} ${escapeHtml(i.unit)})</option>`
+    ).join("");
+    if (claimSelect.options.length) {
+      document.getElementById("claim-requested").value = claimSelect.options[0].dataset.qty || "";
+    }
+    document.getElementById("claim-modal").classList.remove("hidden");
+  });
 }
 
 // ---------------------------------------------------------------- CLAIMS PANEL (Poglavlje 6)
@@ -359,6 +365,11 @@ function renderClaims() {
 }
 
 document.getElementById("close-claim-modal").addEventListener("click", () => document.getElementById("claim-modal").classList.add("hidden"));
+document.getElementById("claim-item").addEventListener("change", (e) => {
+  const opt = e.target.options[e.target.selectedIndex];
+  document.getElementById("claim-requested").value = opt?.dataset.qty || "";
+});
+
 document.getElementById("claim-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   await openClaim(companyId, orderId, {
