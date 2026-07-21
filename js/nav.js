@@ -38,8 +38,8 @@ export function renderNav({ companyId, uid, profile }) {
   host.innerHTML = `
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">N</span>
-        <span class="brand-name" data-i18n="app_name">Nabavka</span>
+        <img class="brand-mark" src="./assets/icon-192.png" alt="Order & Supply" />
+        <span class="brand-name" title="${t("app_name")}">O&amp;S</span>
       </div>
       <nav class="side-menu">
         ${menu.map((m) => `

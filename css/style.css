@@ -106,11 +106,9 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
 .brand-mark {
   width: 34px; height: 34px; border-radius: 10px;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-info));
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-display); font-weight: 800; color: #fff;
+  object-fit: cover; display: block; box-shadow: var(--shadow-sm);
 }
-.brand-name { font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--color-text); }
+.brand-name { font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--color-text); letter-spacing: 0.02em; }
 .side-menu { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .side-link {
   display: flex; align-items: center; gap: 10px;

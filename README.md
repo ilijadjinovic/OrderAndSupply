@@ -74,9 +74,12 @@ nabavka-sistem/
 ├── templates.html                Šabloni / omiljene liste / ponavljajuće
 ├── isporucilac-dashboard.html    Dashboard Isporučioca
 ├── order-detail.html             Detalji narudžbine (zajednička za sve uloge)
+├── manifest.json                 PWA manifest (naziv "Order & Supply", ikonice)
+├── assets/
+│   ├── icon-192.png               App ikonica (favicon, PWA, manifest)
+│   └── icon-512.png               App ikonica (veća rezolucija)
 ├── css/
-│   ├── base.css                  Design tokeni, layout, forme, dugmad
-│   └── components.css            Kartice, tabele, bedževi, chat, modal
+│   └── style.css                 Jedinstven stylesheet (dizajn tokeni, layout, komponente)
 ├── js/
 │   ├── firebase-config.js        ⚠️ popuni svojim Firebase podacima
 │   ├── firebase-init.js          Inicijalizacija SDK-a (CDN, ES moduli)
