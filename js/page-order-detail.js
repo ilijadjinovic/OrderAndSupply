@@ -228,7 +228,7 @@ function renderPurchasesPanel() {
       const stillOpen = purchases.some((p) => p.id !== btn.dataset.finishPurchase && p.status !== "zavrsena");
       if (!stillOpen) {
         await setOrderStatus(companyId, orderId, ORDER_STATUS.ZAVRSENA_NABAVKA, { actorUid: uidValue, actorName: profile.name });
-        toast("Sve nabavke su završene — narudžbina prelazi u isporuku.", "success");
+        toast("Sve nabavke su završene. Kliknite \"Počni isporuku\" da nastavite.", "success");
       } else {
         toast("Nabavka za ovog dobavljača je završena.", "success");
       }
