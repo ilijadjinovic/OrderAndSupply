@@ -63,11 +63,13 @@ export function renderNav({ companyId, uid, profile }) {
         <button class="icon-btn" id="notif-btn" aria-label="Notifikacije">🔔<span id="notif-dot" class="notif-dot hidden"></span></button>
         <div class="notif-panel hidden" id="notif-panel"></div>
       </div>
-      <div class="user-chip">
+      <div class="user-chip" title="${profile.name || profile.email}">
         <span class="user-avatar">${(profile.name || "?").charAt(0).toUpperCase()}</span>
         <span class="user-name">${profile.name || profile.email}</span>
       </div>
-      <button class="btn btn-ghost" id="logout-btn" data-i18n="logout">Odjava</button>
+      <button class="btn btn-ghost" id="logout-btn" title="${t("logout")}">
+        <span class="logout-icon">⏻</span><span class="logout-label" data-i18n="logout">Odjava</span>
+      </button>
     </header>
   `;
 
