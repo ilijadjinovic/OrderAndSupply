@@ -8,11 +8,40 @@ import {
 import { ORDER_STATUS, ORDER_STATUS_LABELS, uid } from "./utils.js";
 import { logAudit } from "./audit.js";
 import { createNotification, NOTIF_EVENTS } from "./notifications.js";
+import { getIsporucioci } from "./users.js";
 
 const ordersCol = (companyId) => collection(db, "companies", companyId, "orders");
 const itemsCol = (companyId, orderId) => collection(db, "companies", companyId, "orders", orderId, "items");
 const deliveryLocCol = (companyId, orderId) => collection(db, "companies", companyId, "orders", orderId, "deliveryLocations");
 const purchasesCol = (companyId, orderId) => collection(db, "companies", companyId, "orders", orderId, "purchases");
+
+// Statusi koji se računaju kao "aktivna" narudžbina kod brojanja opterećenja isporučioca
+const ACTIVE_DELIVERY_STATUSES = [
+  ORDER_STATUS.CEKA_PRIHVATANJE, ORDER_STATUS.PRIHVACENA, ORDER_STATUS.U_NABAVCI,
+  ORDER_STATUS.ZAVRSENA_NABAVKA, ORDER_STATUS.U_ISPORUCI, ORDER_STATUS.ISPORUCENA,
+];
+
+// Bira isporučioca sa najmanje trenutno aktivnih (nezavršenih) narudžbina — Poglavlje 4.2 "automatski"
+async function pickAvailableIsporucilac(companyId) {
+  const isporucioci = await getIsporucioci(companyId);
+  if (!isporucioci.length) return null;
+  if (isporucioci.length === 1) return isporucioci[0];
+
+  // Firestore ne dozvoljava dva "in" filtera u istom upitu, pa se broji preko jednog
+  // upita po statusu, a raspodela po isporučiocu se radi na klijentu.
+  const snap = await getDocs(query(ordersCol(companyId), where("status", "in", ACTIVE_DELIVERY_STATUSES)));
+  const counts = Object.fromEntries(isporucioci.map((u) => [u.uid, 0]));
+  snap.docs.forEach((d) => {
+    const assignedToUid = d.data().assignedToUid;
+    if (assignedToUid && assignedToUid in counts) counts[assignedToUid] += 1;
+  });
+
+  let chosen = isporucioci[0];
+  for (const u of isporucioci) {
+    if (counts[u.uid] < counts[chosen.uid]) chosen = u;
+  }
+  return chosen;
+}
 
 // items: [{supplierId, supplierName, productId, productName, unit, quantity, note, priority, pickupLocationId}]
 // deliveryLocations: [{locationId, locationName, itemProductIds:[...]}]
@@ -20,10 +49,24 @@ export async function createOrder(companyId, {
   createdByUid, createdByName, priority, items, deliveryLocations, assignmentMode, recurring = null,
 }) {
   const orderNumber = `NAR-${Date.now().toString().slice(-8)}`;
+
+  let status = assignmentMode === "narucilac_bira" ? ORDER_STATUS.KREIRANA : ORDER_STATUS.CEKA_PRIHVATANJE;
+  let assignedToUid = null, assignedToName = null;
+
+  if (assignmentMode === "automatski") {
+    const chosen = await pickAvailableIsporucilac(companyId);
+    if (chosen) {
+      assignedToUid = chosen.uid;
+      assignedToName = chosen.name;
+    }
+    // Ako nema nijednog aktivnog isporučioca u firmi, narudžbina ostaje nedodeljena
+    // (status i dalje CEKA_PRIHVATANJE) i Admin je može ručno dodeliti kasnije.
+  }
+
   const orderRef = await addDoc(ordersCol(companyId), {
     orderNumber, createdByUid, createdByName, priority,
-    status: assignmentMode === "narucilac_bira" ? ORDER_STATUS.KREIRANA : ORDER_STATUS.CEKA_PRIHVATANJE,
-    assignedToUid: null, assignedToName: null,
+    status,
+    assignedToUid, assignedToName,
     supplierIds: [...new Set(items.map((i) => i.supplierId))],
     itemCount: items.length, recurring,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -49,6 +92,13 @@ export async function createOrder(companyId, {
     batch.set(pRef, { ...p, status: "ceka", createdAt: serverTimestamp() });
   });
   await batch.commit();
+
+  if (assignedToUid) {
+    await createNotification(companyId, {
+      toUid: assignedToUid, event: NOTIF_EVENTS.NOVA_NARUDZBINA, orderId: orderRef.id,
+      title: "Nova narudžbina dodeljena", body: "Sistem vam je automatski dodelio narudžbinu.",
+    });
+  }
 
   await logAudit(companyId, { action: "order_created", entity: "Orders", entityId: orderRef.id, actorUid: createdByUid, actorName: createdByName, details: orderNumber });
   return orderRef.id;

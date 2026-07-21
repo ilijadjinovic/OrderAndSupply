@@ -90,7 +90,7 @@ function renderActionBar() {
   const role = profile.role;
   const S = ORDER_STATUS;
 
-  if (role === "admin" && order.status === S.KREIRANA && !order.assignedToUid) {
+  if (role === "admin" && !order.assignedToUid && ![S.ZATVORENA, S.POTVRDJEN_PRIJEM, S.REKLAMACIJA].includes(order.status)) {
     getIsporucioci(companyId).then((list) => {
       bar.innerHTML = `
         <select id="assign-select" style="max-width:200px;">${list.map((u) => `<option value="${u.uid}" data-name="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`).join("") || "<option value=''>Nema isporučilaca</option>"}</select>
