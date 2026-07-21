@@ -120,13 +120,6 @@ function renderActionBar() {
         await rejectOrder(companyId, orderId, { reason, actorUid: uidValue, actorName: profile.name, orderCreatedByUid: order.createdByUid });
         toast("Narudžbina odbijena.", "success");
       });
-    } else if (order.status === S.U_NABAVCI) {
-      const allFinished = purchases.length > 0 && purchases.every((p) => p.status === "zavrsena");
-      bar.innerHTML = `<button class="btn btn-amber" id="finish-purchase-btn" data-i18n="finish_purchase" ${allFinished ? "" : "disabled"}>Završi nabavku</button>`;
-      document.getElementById("finish-purchase-btn").addEventListener("click", async () => {
-        await setOrderStatus(companyId, orderId, S.ZAVRSENA_NABAVKA, { actorUid: uidValue, actorName: profile.name });
-        toast("Nabavka završena.", "success");
-      });
     } else if (order.status === S.ZAVRSENA_NABAVKA) {
       bar.innerHTML = `<button class="btn btn-amber" id="start-delivery-btn" data-i18n="start_delivery">Počni isporuku</button>`;
       document.getElementById("start-delivery-btn").addEventListener("click", async () => {
@@ -230,7 +223,16 @@ function renderPurchasesPanel() {
     });
   });
   panel.querySelectorAll("button[data-finish-purchase]").forEach((btn) => {
-    btn.addEventListener("click", () => finishPurchase(companyId, orderId, btn.dataset.finishPurchase, profile.name));
+    btn.addEventListener("click", async () => {
+      await finishPurchase(companyId, orderId, btn.dataset.finishPurchase, profile.name);
+      const stillOpen = purchases.some((p) => p.id !== btn.dataset.finishPurchase && p.status !== "zavrsena");
+      if (!stillOpen) {
+        await setOrderStatus(companyId, orderId, ORDER_STATUS.ZAVRSENA_NABAVKA, { actorUid: uidValue, actorName: profile.name });
+        toast("Sve nabavke su završene — narudžbina prelazi u isporuku.", "success");
+      } else {
+        toast("Nabavka za ovog dobavljača je završena.", "success");
+      }
+    });
   });
   panel.querySelectorAll(".receipt-number-input").forEach((inp) => {
     inp.addEventListener("change", () => setPurchaseReceiptNumber(companyId, orderId, inp.dataset.purchase, inp.value.trim()));
@@ -253,7 +255,7 @@ function renderPurchasesPanel() {
 function renderDeliveryPanel() {
   const panel = document.getElementById("delivery-panel");
   if (!deliveryLocations.length) { panel.innerHTML = ""; return; }
-  const isDeliverer = profile.role === "isporucilac" && order.assignedToUid === uidValue;
+  const isDeliverer = profile.role === "isporucilac" && order.assignedToUid === uidValue && order.status === ORDER_STATUS.U_ISPORUCI;
   const isOrderer = profile.role === "narucilac" && order.createdByUid === uidValue;
 
   const statusBadge = { ceka: '<span class="badge badge-gray">Čeka</span>', isporuceno: '<span class="badge badge-amber">Isporučeno</span>', potvrdjeno: '<span class="badge badge-teal">Potvrđeno</span>' };
