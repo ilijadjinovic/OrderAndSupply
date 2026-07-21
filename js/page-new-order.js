@@ -85,6 +85,47 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   });
 });
 
+// --- Entry mode tabs (Iz kataloga / Slobodan unos) ---
+document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("product-list").classList.toggle("hidden", btn.dataset.mode !== "catalog");
+    document.getElementById("manual-entry").classList.toggle("hidden", btn.dataset.mode !== "manual");
+  });
+});
+
+// --- Slobodan (ručni) unos stavke — samo naziv, količina, JM, napomena ---
+document.getElementById("manual-add-btn").addEventListener("click", () => {
+  const supplierId = document.getElementById("supplier-select").value;
+  if (!supplierId) { toast("Prvo izaberite dobavljača.", "error"); return; }
+
+  const name = document.getElementById("manual-name").value.trim();
+  if (!name) { toast("Unesite naziv artikla.", "error"); return; }
+  const qty = Number(document.getElementById("manual-qty").value) || 1;
+  const unit = document.getElementById("manual-unit").value.trim() || "kom";
+  const note = document.getElementById("manual-note").value.trim();
+
+  const supplier = suppliers.find((s) => s.id === supplierId);
+  const pickupSelect = document.getElementById("pickup-select");
+  const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
+
+  cart.push({
+    tempId: uid("item"), supplierId, supplierName: supplier?.name || "Dobavljač",
+    productId: "", productName: name, unit, quantity: qty, note,
+    pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : "Bilo koja lokacija",
+    deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
+    manualEntry: true,
+  });
+
+  toast(`Dodato: ${name}`, "success");
+  document.getElementById("manual-name").value = "";
+  document.getElementById("manual-qty").value = "1";
+  document.getElementById("manual-note").value = "";
+  document.getElementById("manual-name").focus();
+  renderCart();
+});
+
 // --- Delivery locations ---
 function renderDeliveryLocationOptions() {
   const host = document.getElementById("delivery-locations");
@@ -121,7 +162,7 @@ function renderCart() {
       <div class="supplier-block-head"><h3>${escapeHtml(group.name)}</h3><span class="muted">${group.items.length} artikala</span></div>
       ${group.items.map((item) => `
         <div class="item-row" data-temp-id="${item.tempId}">
-          <div><strong>${escapeHtml(item.productName)}</strong><div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div></div>
+          <div><strong>${escapeHtml(item.productName)}</strong>${item.manualEntry ? ' <span class="badge badge-gray">Ručni unos</span>' : ""}<div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div></div>
           <input type="number" min="0.1" step="0.1" value="${item.quantity}" class="cart-qty" />
           <span class="muted">${escapeHtml(item.unit)}</span>
           <input type="text" value="${escapeHtml(item.note)}" placeholder="Napomena" class="cart-note" />
