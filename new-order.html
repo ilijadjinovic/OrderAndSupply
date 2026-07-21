@@ -74,8 +74,17 @@
       <div id="delivery-locations" class="form-row"></div>
     </div>
 
+    <div class="panel hidden" id="isporucilac-panel">
+      <div class="panel-head"><h2>4. Izaberi isporučioca</h2></div>
+      <p class="hint">Ova firma je podešena da naručilac sam bira ko će obraditi narudžbinu.</p>
+      <div class="field" style="max-width:320px;">
+        <label>Isporučilac</label>
+        <select id="isporucilac-select"><option value="">— izaberi isporučioca —</option></select>
+      </div>
+    </div>
+
     <div class="panel">
-      <div class="panel-head"><h2>4. Prioritet</h2></div>
+      <div class="panel-head"><h2 id="priority-step-title">4. Prioritet</h2></div>
       <div style="display:flex;gap:18px;">
         <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="radio" name="priority" value="standardno" checked style="width:auto;" /> Standardno</label>
         <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="radio" name="priority" value="hitno" style="width:auto;" /> Hitno</label>
@@ -83,7 +92,7 @@
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h2>5. Sačuvaj kao (opciono)</h2></div>
+      <div class="panel-head"><h2 id="save-step-title">5. Sačuvaj kao (opciono)</h2></div>
       <div class="form-row">
         <div class="field"><label>Sačuvaj ovu listu kao</label>
           <select id="save-as-type">

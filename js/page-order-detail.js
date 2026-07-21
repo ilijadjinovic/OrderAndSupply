@@ -120,13 +120,6 @@ function renderActionBar() {
         await rejectOrder(companyId, orderId, { reason, actorUid: uidValue, actorName: profile.name, orderCreatedByUid: order.createdByUid });
         toast("Narudžbina odbijena.", "success");
       });
-    } else if (order.status === S.PRIHVACENA) {
-      bar.innerHTML = `<button class="btn btn-amber" id="start-purchase-btn" data-i18n="start_purchase">Počni nabavku</button>`;
-      document.getElementById("start-purchase-btn").addEventListener("click", async () => {
-        await Promise.all(purchases.map((p) => startPurchase(companyId, orderId, p.id, profile.name)));
-        await setOrderStatus(companyId, orderId, S.U_NABAVCI, { actorUid: uidValue, actorName: profile.name });
-        toast("Nabavka je počela.", "success");
-      });
     } else if (order.status === S.U_NABAVCI) {
       const allFinished = purchases.length > 0 && purchases.every((p) => p.status === "zavrsena");
       bar.innerHTML = `<button class="btn btn-amber" id="finish-purchase-btn" data-i18n="finish_purchase" ${allFinished ? "" : "disabled"}>Završi nabavku</button>`;
@@ -193,7 +186,8 @@ function renderItemsTable() {
 function renderPurchasesPanel() {
   const panel = document.getElementById("purchases-panel");
   if (!purchases.length) { panel.innerHTML = ""; return; }
-  const canWork = profile.role === "isporucilac" && order.assignedToUid === uidValue;
+  const canWork = profile.role === "isporucilac" && order.assignedToUid === uidValue
+    && [ORDER_STATUS.PRIHVACENA, ORDER_STATUS.U_NABAVCI].includes(order.status);
 
   panel.innerHTML = `<div class="panel-head"><h2>Nabavke po dobavljaču</h2></div>` + purchases.map((p) => {
     const supplierItems = items.filter((i) => i.supplierId === p.supplierId);
@@ -227,7 +221,13 @@ function renderPurchasesPanel() {
   }).join("");
 
   panel.querySelectorAll("button[data-start-purchase]").forEach((btn) => {
-    btn.addEventListener("click", () => startPurchase(companyId, orderId, btn.dataset.startPurchase, profile.name));
+    btn.addEventListener("click", async () => {
+      await startPurchase(companyId, orderId, btn.dataset.startPurchase, profile.name);
+      if (order.status === ORDER_STATUS.PRIHVACENA) {
+        await setOrderStatus(companyId, orderId, ORDER_STATUS.U_NABAVCI, { actorUid: uidValue, actorName: profile.name });
+      }
+      toast("Nabavka je počela.", "success");
+    });
   });
   panel.querySelectorAll("button[data-finish-purchase]").forEach((btn) => {
     btn.addEventListener("click", () => finishPurchase(companyId, orderId, btn.dataset.finishPurchase, profile.name));

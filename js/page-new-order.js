@@ -33,6 +33,15 @@ requireAuth(["narucilac"], async (user, profile) => {
   const templates = await getTemplates(companyId);
   document.getElementById("template-select").innerHTML += templates.map((t) => `<option value="${t.id}">${escapeHtml(t.name)} (${t.type})</option>`).join("");
 
+  if (assignmentMode === "narucilac_bira") {
+    document.getElementById("isporucilac-panel").classList.remove("hidden");
+    document.getElementById("priority-step-title").textContent = "5. Prioritet";
+    document.getElementById("save-step-title").textContent = "6. Sačuvaj kao (opciono)";
+    const isporucioci = await getIsporucioci(companyId);
+    document.getElementById("isporucilac-select").innerHTML += isporucioci
+      .map((u) => `<option value="${u.uid}">${escapeHtml(u.name)}</option>`).join("");
+  }
+
   const preselect = getParam("template");
   if (preselect && templates.some((t) => t.id === preselect)) {
     document.getElementById("template-select").value = preselect;
@@ -228,6 +237,10 @@ document.getElementById("submit-order").addEventListener("click", async () => {
   if (!chosenDeliveryLocations.length) { toast("Izaberite bar jednu lokaciju isporuke.", "error"); return; }
   const missingDelivery = cart.find((i) => !i.deliveryLocationId);
   if (missingDelivery) { toast(`Izaberite lokaciju isporuke za: ${missingDelivery.productName}`, "error"); return; }
+  const isporucilacSelect = document.getElementById("isporucilac-select");
+  if (assignmentMode === "narucilac_bira" && !isporucilacSelect.value) {
+    toast("Izaberite isporučioca.", "error"); return;
+  }
 
   const priority = document.querySelector('input[name="priority"]:checked').value;
   const btn = document.getElementById("submit-order");
@@ -240,12 +253,9 @@ document.getElementById("submit-order").addEventListener("click", async () => {
       deliveryLocations: chosenDeliveryLocations, assignmentMode,
     });
 
-    if (assignmentMode === "narucilac_bira") {
-      const isporucioci = await getIsporucioci(companyId);
-      if (isporucioci.length) {
-        // Jednostavan izbor: prvi slobodan isporučilac (u produkciji: prikazati listu za izbor)
-        await assignOrder(companyId, orderId, { assignedToUid: isporucioci[0].uid, assignedToName: isporucioci[0].name, actorName });
-      }
+    if (assignmentMode === "narucilac_bira" && isporucilacSelect.value) {
+      const chosenOpt = isporucilacSelect.options[isporucilacSelect.selectedIndex];
+      await assignOrder(companyId, orderId, { assignedToUid: isporucilacSelect.value, assignedToName: chosenOpt.textContent, actorName });
     }
 
     const saveAsType = document.getElementById("save-as-type").value;
