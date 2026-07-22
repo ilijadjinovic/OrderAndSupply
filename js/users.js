@@ -62,3 +62,8 @@ export async function getIsporucioci(companyId) {
   const users = await getCompanyUsers(companyId);
   return users.filter((u) => u.role === "isporucilac" && u.active !== false);
 }
+
+export async function getNarucioci(companyId) {
+  const users = await getCompanyUsers(companyId);
+  return users.filter((u) => u.role === "narucilac" && u.active !== false);
+}

@@ -20,7 +20,10 @@
         <h1 id="order-number" class="mono">—</h1>
         <p id="order-meta" class="muted"></p>
       </div>
-      <div id="action-bar" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+        <button class="btn btn-outline" id="print-pdf-btn" title="Izvezi narudžbenicu u PDF za štampu">🖨️ Narudžbenica (PDF)</button>
+        <div id="action-bar" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+      </div>
     </div>
 
     <div class="panel">
@@ -40,6 +43,7 @@
         </div>
 
         <div class="panel" id="purchases-panel"></div>
+        <div class="panel" id="finance-panel"></div>
         <div class="panel" id="delivery-panel"></div>
         <div class="panel" id="receipt-panel"></div>
         <div class="panel" id="claims-panel"></div>

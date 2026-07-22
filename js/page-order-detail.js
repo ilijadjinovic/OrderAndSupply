@@ -5,13 +5,15 @@ import {
   listenOrder, listenOrderItems, listenOrderPurchases, listenDeliveryLocations,
   acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, assignOrder,
 } from "./orders.js";
-import { startPurchase, finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchaseReceiptNumber } from "./purchases.js";
+import { startPurchase, finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
+import { generateOrderPdf } from "./order-print.js";
 import { markLocationDelivered, confirmLocationReceipt } from "./deliveries.js";
 import { openClaim, resolveClaim, listenClaims } from "./claims.js";
 import { sendMessageAndNotify, listenMessages } from "./chat.js";
 import { uploadAttachment, listenAttachments } from "./attachments.js";
 import { orderQrUrl, renderQrCode } from "./qrcode.js";
 import { getIsporucioci } from "./users.js";
+import { getCompanySettings } from "./settings.js";
 import {
   formatDate, escapeHtml, toast, getParam, badgeClassForStatus,
   ORDER_STATUS, ORDER_STATUS_LABELS, ORDER_STATUS_FLOW,
@@ -22,12 +24,13 @@ await loadLang();
 const orderId = getParam("order");
 if (!orderId) document.body.innerHTML = "<p style='padding:40px;'>Narudžbina nije pronađena (nedostaje ID u URL-u).</p>";
 
-let companyId, uidValue, profile;
+let companyId, uidValue, profile, companySettings = null;
 let order = null, items = [], purchases = [], deliveryLocations = [], claims = [];
 
 requireAuth(null, (user, p) => {
   companyId = p.companyId; uidValue = user.uid; profile = p;
   renderNav({ companyId, uid: user.uid, profile });
+  getCompanySettings(companyId).then((s) => { companySettings = s; renderAll(); });
 
   listenOrder(companyId, orderId, (o) => { order = o; renderAll(); });
   listenOrderItems(companyId, orderId, (i) => { items = i; renderAll(); });
@@ -49,6 +52,7 @@ function renderAll() {
   renderActionBar();
   renderItemsTable();
   renderPurchasesPanel();
+  renderFinancePanel();
   renderDeliveryPanel();
   renderReceiptPanel();
   renderQrPanel();
@@ -182,6 +186,10 @@ function renderPurchasesPanel() {
   const canWork = profile.role === "isporucilac" && order.assignedToUid === uidValue
     && [ORDER_STATUS.PRIHVACENA, ORDER_STATUS.U_NABAVCI].includes(order.status);
 
+  // Finansijski unos je dozvoljen isporučiocu sve dok narudžbina nije prešla u fazu isporuke
+  const canEditFinance = profile.role === "isporucilac" && order.assignedToUid === uidValue
+    && [ORDER_STATUS.PRIHVACENA, ORDER_STATUS.U_NABAVCI, ORDER_STATUS.ZAVRSENA_NABAVKA].includes(order.status);
+
   panel.innerHTML = `<div class="panel-head"><h2>Nabavke po dobavljaču</h2></div>` + purchases.map((p) => {
     const supplierItems = items.filter((i) => i.supplierId === p.supplierId);
     const statusBadge = { ceka: '<span class="badge badge-gray">Čeka</span>', u_toku: '<span class="badge badge-amber">U toku</span>', zavrsena: '<span class="badge badge-teal">Završena</span>' }[p.status];
@@ -205,10 +213,13 @@ function renderPurchasesPanel() {
         `).join("")}
         ${canWork && p.status === "ceka" ? `<button class="btn btn-sm btn-amber" data-start-purchase="${p.id}" style="margin-top:10px;">Počni ovu nabavku</button>` : ""}
         ${canWork && p.status === "u_toku" ? `<button class="btn btn-sm btn-primary" data-finish-purchase="${p.id}" style="margin-top:10px;">Završi ovu nabavku</button>` : ""}
-        <div class="field" style="margin-top:10px;max-width:220px;">
-          <label>Broj računa</label>
-          <input type="text" class="receipt-number-input" data-purchase="${p.id}" value="${escapeHtml(p.receiptNumber || "")}" ${canWork ? "" : "disabled"} />
+        <div class="form-row payment-form" data-purchase="${p.id}" style="margin-top:12px;align-items:end;">
+          <div class="field"><label>Plaćeni iznos (${companyCurrency()})</label><input type="number" step="0.01" min="0" class="pay-amount" value="${p.paidAmount ?? ""}" placeholder="0.00" ${canEditFinance ? "" : "disabled"} /></div>
+          <div class="field"><label>Broj računa</label><input type="text" class="pay-receipt-number" value="${escapeHtml(p.receiptNumber || "")}" ${canEditFinance ? "" : "disabled"} /></div>
+          <div class="field"><label>Datum računa</label><input type="date" class="pay-receipt-date" value="${escapeHtml(p.receiptDate || "")}" ${canEditFinance ? "" : "disabled"} /></div>
+          ${canEditFinance ? `<button type="button" class="btn btn-sm btn-primary" data-save-payment="${p.id}">💾 Sačuvaj</button>` : ""}
         </div>
+        ${!canEditFinance && (p.paidAmount || p.receiptNumber) ? `<p class="muted" style="margin-top:4px;">Plaćeno: <strong>${formatCurrency(p.paidAmount)}</strong>${p.receiptNumber ? ` · Račun br. ${escapeHtml(p.receiptNumber)}` : ""}${p.receiptDate ? ` od ${formatDateShort2(p.receiptDate)}` : ""}</p>` : ""}
       </div>
     `;
   }).join("");
@@ -234,8 +245,15 @@ function renderPurchasesPanel() {
       }
     });
   });
-  panel.querySelectorAll(".receipt-number-input").forEach((inp) => {
-    inp.addEventListener("change", () => setPurchaseReceiptNumber(companyId, orderId, inp.dataset.purchase, inp.value.trim()));
+  panel.querySelectorAll("button[data-save-payment]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = panel.querySelector(`.payment-form[data-purchase="${btn.dataset.savePayment}"]`);
+      const paidAmount = Number(row.querySelector(".pay-amount").value) || 0;
+      const receiptNumber = row.querySelector(".pay-receipt-number").value.trim();
+      const receiptDate = row.querySelector(".pay-receipt-date").value;
+      await setPurchasePayment(companyId, orderId, btn.dataset.savePayment, { paidAmount, receiptNumber, receiptDate }, profile.name);
+      toast("Finansijski podaci sačuvani.", "success");
+    });
   });
   panel.querySelectorAll(".item-row[data-item-id] button[data-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -249,6 +267,50 @@ function renderPurchasesPanel() {
       toast("Ažurirano.", "success");
     });
   });
+}
+
+// ---------------------------------------------------------------- FINANCE PANEL (finansijski pregled narudžbine)
+function renderFinancePanel() {
+  const panel = document.getElementById("finance-panel");
+  if (!purchases.length) { panel.innerHTML = ""; return; }
+  const total = calcOrderTotal(purchases);
+  const isClosed = [ORDER_STATUS.ZATVORENA, ORDER_STATUS.POTVRDJEN_PRIJEM].includes(order.status);
+  if (total === 0 && !isClosed) { panel.innerHTML = ""; return; }
+
+  panel.innerHTML = `
+    <div class="panel-head"><h2>Finansijski pregled</h2>${isClosed ? '<span class="badge badge-green">Narudžbina zatvorena</span>' : ""}</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Dobavljač</th><th>Broj računa</th><th>Datum računa</th><th>Iznos</th></tr></thead>
+        <tbody>
+          ${purchases.map((p) => `
+            <tr>
+              <td>${escapeHtml(p.supplierName)}</td>
+              <td>${escapeHtml(p.receiptNumber || "—")}</td>
+              <td>${p.receiptDate ? formatDateShort2(p.receiptDate) : "—"}</td>
+              <td class="mono">${formatCurrency(p.paidAmount)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+        <tfoot>
+          <tr><td colspan="3" style="text-align:right;"><strong>Ukupno za narudžbinu:</strong></td><td class="mono"><strong>${formatCurrency(total)}</strong></td></tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+}
+
+function companyCurrency() { return companySettings?.currency || "RSD"; }
+function formatCurrency(amount) {
+  const n = Number(amount) || 0;
+  return `${n.toLocaleString("sr-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${companyCurrency()}`;
+}
+// Formatira datum u formatu YYYY-MM-DD (iz <input type="date">) u sr-RS prikaz — formatDateShort iz utils.js očekuje Firestore Timestamp
+function formatDateShort2(isoDateStr) {
+  if (!isoDateStr) return "—";
+  const d = new Date(isoDateStr + "T00:00:00");
+  if (isNaN(d)) return isoDateStr;
+  return d.toLocaleDateString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 // ---------------------------------------------------------------- DELIVERY PANEL (Poglavlje 5.2)
@@ -421,6 +483,22 @@ function renderAttachments(list) {
       </div>`).join("")
     : `<p class="muted">Nema priloga.</p>`;
 }
+// ---------------------------------------------------------------- PDF NARUDŽBENICA (štampa/izvoz)
+document.getElementById("print-pdf-btn").addEventListener("click", async (e) => {
+  if (!order) return;
+  const btn = e.currentTarget;
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = "Generisanje PDF-a...";
+  try {
+    await generateOrderPdf({ company: companySettings, order, items, purchases, deliveryLocations });
+  } catch (err) {
+    console.error(err);
+    toast("Greška pri generisanju PDF-a.", "error");
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+});
+
 document.getElementById("upload-btn").addEventListener("click", async () => {
   const file = document.getElementById("attachment-file").files[0];
   if (!file) { toast("Izaberite fajl.", "error"); return; }

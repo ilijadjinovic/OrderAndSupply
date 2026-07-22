@@ -60,5 +60,6 @@
   "start_purchase": "Start purchase",
   "finish_purchase": "Finish purchase",
   "start_delivery": "Start delivery",
-  "finish_delivery": "Finish delivery"
+  "finish_delivery": "Finish delivery",
+  "reports": "Reports"
 }

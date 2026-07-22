@@ -16,6 +16,7 @@ const MENUS = {
     { href: "admin-locations.html", label: "locations", icon: "📍" },
     { href: "admin-suppliers.html", label: "suppliers", icon: "🚚" },
     { href: "admin-catalog.html", label: "catalog", icon: "📦" },
+    { href: "admin-reports.html", label: "reports", icon: "📈" },
     { href: "admin-import-export.html", label: "import_export", icon: "⇅" },
     { href: "admin-settings.html", label: "settings", icon: "⚙️" },
   ],

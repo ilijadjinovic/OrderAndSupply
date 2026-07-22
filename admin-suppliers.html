@@ -22,8 +22,8 @@
     <div class="panel">
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Naziv</th><th>Kontakt osoba</th><th>Telefon</th><th>Email</th><th></th></tr></thead>
-          <tbody id="suppliers-body"><tr class="empty-row"><td colspan="5">Učitavanje...</td></tr></tbody>
+          <thead><tr><th>Naziv</th><th>PIB</th><th>Kontakt osoba</th><th>Telefon</th><th>Email</th><th></th></tr></thead>
+          <tbody id="suppliers-body"><tr class="empty-row"><td colspan="6">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -32,9 +32,15 @@
 
 <div class="modal-overlay hidden" id="supplier-modal">
   <div class="modal-card">
-    <div class="modal-head"><h2>Novi dobavljač</h2><button class="icon-btn" id="close-supplier-modal">✕</button></div>
+    <div class="modal-head"><h2 id="supplier-modal-title">Novi dobavljač</h2><button class="icon-btn" id="close-supplier-modal">✕</button></div>
     <form id="supplier-form">
       <div class="field"><label>Naziv dobavljača</label><input type="text" id="s-name" required /></div>
+      <div class="form-row">
+        <div class="field"><label>PIB</label><input type="text" id="s-pib" /></div>
+        <div class="field"><label>Matični broj</label><input type="text" id="s-maticni" /></div>
+      </div>
+      <div class="field"><label>Adresa</label><input type="text" id="s-address" /></div>
+      <div class="field"><label>Tekući račun</label><input type="text" id="s-bank" placeholder="npr. 160-0000000000000-00" /></div>
       <div class="field"><label>Kontakt osoba</label><input type="text" id="s-contact" /></div>
       <div class="form-row">
         <div class="field"><label>Telefon</label><input type="tel" id="s-phone" /></div>

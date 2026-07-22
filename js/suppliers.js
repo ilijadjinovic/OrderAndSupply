@@ -7,14 +7,24 @@ import { logAudit } from "./audit.js";
 const suppliersCol = (companyId) => collection(db, "companies", companyId, "suppliers");
 const supLocationsCol = (companyId, supplierId) => collection(db, "companies", companyId, "suppliers", supplierId, "locations");
 
-export async function addSupplier(companyId, { name, contact = "", phone = "", email = "", actorName }) {
-  const ref = await addDoc(suppliersCol(companyId), { name, contact, phone, email, active: true, createdAt: serverTimestamp() });
+export async function addSupplier(companyId, {
+  name, contact = "", phone = "", email = "",
+  pib = "", maticniBroj = "", address = "", bankAccount = "",
+  actorName,
+}) {
+  const ref = await addDoc(suppliersCol(companyId), {
+    name, contact, phone, email, pib, maticniBroj, address, bankAccount,
+    active: true, createdAt: serverTimestamp(),
+  });
   await logAudit(companyId, { action: "supplier_created", entity: "Suppliers", entityId: ref.id, actorName, details: name });
   return ref.id;
 }
 
-export function updateSupplier(companyId, id, data) {
-  return updateDoc(doc(db, "companies", companyId, "suppliers", id), data);
+export async function updateSupplier(companyId, id, data, actorName) {
+  await updateDoc(doc(db, "companies", companyId, "suppliers", id), data);
+  if (actorName) {
+    await logAudit(companyId, { action: "supplier_updated", entity: "Suppliers", entityId: id, actorName, details: data.name || "" });
+  }
 }
 export function deleteSupplier(companyId, id) {
   return deleteDoc(doc(db, "companies", companyId, "suppliers", id));

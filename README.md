@@ -55,6 +55,25 @@ Master Admin nalog (uvid u sve firme na platformi) trenutno se mora ručno
 postaviti: u Firestore konzoli otvori `users/{uid}` dokument željenog korisnika
 i promeni polje `role` u `master_admin`.
 
+## 3.1 Novododate funkcionalnosti
+
+- **Finansijski unos po dobavljaču** — na kartici narudžbine (`order-detail.html`),
+  panel "Nabavke po dobavljaču", isporučilac unosi plaćeni iznos, broj računa i
+  datum računa za svakog dobavljača posebno (`js/purchases.js → setPurchasePayment`).
+  Iznosi se automatski sabiraju i prikazuju u panelu **"Finansijski pregled"** kao
+  ukupan iznos narudžbine.
+- **PDF narudžbenica** — dugme "🖨️ Narudžbenica (PDF)" na kartici narudžbine
+  generiše PDF za štampu (`js/order-print.js`): zaglavlje firme, stavke grupisane
+  po dobavljaču, finansijski pregled (ako je unet) i mesta za potpis
+  naručioca/isporučioca/rukovodioca + polje za overu da je narudžbina realizovana.
+- **Izveštaji** — nova stranica `admin-reports.html` (meni "Izveštaji"): filteri
+  po periodu, naručiocu, isporučiocu, dobavljaču i statusu; pregledi po
+  narudžbenicama (detaljno), po naručiocima, po isporučiocima, po dobavljačima i
+  finansijski pregled; izvoz u CSV/Excel/PDF (`js/reports.js`, `js/page-admin-reports.js`).
+- **Dobavljači — izmena i dodatna polja** — `admin-suppliers.html` sada ima
+  dugme "✎ Izmeni" i polja PIB, matični broj, adresa i tekući račun
+  (`js/suppliers.js → updateSupplier`).
+
 ## 4. Struktura projekta
 
 ```

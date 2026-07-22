@@ -40,3 +40,20 @@ export function markItemSubstitute(companyId, orderId, itemId, { purchasedQty, s
 export function setPurchaseReceiptNumber(companyId, orderId, purchaseId, receiptNumber) {
   return updateDoc(doc(db, "companies", companyId, "orders", orderId, "purchases", purchaseId), { receiptNumber });
 }
+
+// Finansijski unos isporučioca po dobavljaču — iznos koji je plaćen + broj/datum računa (Poglavlje 4.3/5.1)
+export function setPurchasePayment(companyId, orderId, purchaseId, { paidAmount, receiptNumber, receiptDate }, actorName) {
+  logAudit(companyId, {
+    action: "purchase_payment_set", entity: "Purchases", entityId: purchaseId, actorName,
+    details: `Iznos: ${paidAmount} · Račun: ${receiptNumber || "—"} (${receiptDate || "—"})`,
+  });
+  return updateDoc(doc(db, "companies", companyId, "orders", orderId, "purchases", purchaseId), {
+    paidAmount: Number(paidAmount) || 0, receiptNumber: receiptNumber || "", receiptDate: receiptDate || "",
+    paymentSetAt: serverTimestamp(),
+  });
+}
+
+// Ukupan finansijski iznos narudžbine — zbir plaćenih iznosa po svim dobavljačima
+export function calcOrderTotal(purchases) {
+  return purchases.reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
+}
