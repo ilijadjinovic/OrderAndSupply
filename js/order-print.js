@@ -186,7 +186,11 @@ export async function generateOrderPdf({ company, order, items, purchases = [], 
   const doc = new jsPDF("p", "pt", "a4");
 
   const container = document.createElement("div");
-  container.style.cssText = "position:fixed; left:-9999px; top:0; background:#fff;";
+  // VAŽNO: ne sme se pomerati van vidljivog prostora (npr. left:-9999px) — html2canvas
+  // snima sadržaj unutar virtuelnog prozora veličine windowWidth, pa bi element van tog
+  // prostora bio nevidljiv i PDF bi ispao prazan. Umesto toga ostaje na (0,0) i sakriva
+  // se iza ostatka stranice pomoću negativnog z-index-a.
+  container.style.cssText = "position:absolute; top:0; left:0; z-index:-9999; background:#fff;";
   container.innerHTML = buildOrderHtml({ company, order, items, purchases, deliveryLocations });
   document.body.appendChild(container);
 
