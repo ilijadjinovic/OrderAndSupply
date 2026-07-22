@@ -1,14 +1,21 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang } from "./i18n.js";
-import { listenMyOrders } from "./orders.js";
-import { formatDate, escapeHtml, badgeClassForStatus, ORDER_STATUS_LABELS, ROLES } from "./utils.js";
+import { listenMyOrders, getOrderItems, getOrderDeliveryLocations, getOrderPurchases } from "./orders.js";
+import { getCompanySettings } from "./settings.js";
+import { generateOrderPdf } from "./order-print.js";
+import { formatDate, escapeHtml, badgeClassForStatus, ORDER_STATUS_LABELS, ROLES, toast } from "./utils.js";
 
 await loadLang();
 
+let companyIdValue;
+let latestOrders = [];
+
 requireAuth([ROLES.NARUCILAC], (user, profile) => {
+  companyIdValue = profile.companyId;
   renderNav({ companyId: profile.companyId, uid: user.uid, profile });
   listenMyOrders(profile.companyId, user.uid, (orders) => {
+    latestOrders = orders;
     renderStats(orders);
     renderTable(orders);
   });
@@ -31,7 +38,7 @@ function renderStats(orders) {
 
 function renderTable(orders) {
   const body = document.getElementById("orders-body");
-  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">Još uvek nemate narudžbina.</td></tr>`; return; }
+  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">Još uvek nemate narudžbina.</td></tr>`; return; }
   body.innerHTML = orders.map((o) => `
     <tr class="row-link" data-id="${o.id}">
       <td class="mono">${o.orderNumber}</td>
@@ -39,9 +46,42 @@ function renderTable(orders) {
       <td><span class="badge ${badgeClassForStatus(o.status)}">${ORDER_STATUS_LABELS[o.status] || o.status}</span></td>
       <td>${escapeHtml(o.assignedToName || "—")}</td>
       <td>${formatDate(o.createdAt)}</td>
+      <td><button class="btn btn-sm btn-outline pdf-btn" data-pdf-id="${o.id}" data-pdf-number="${escapeHtml(o.orderNumber)}" title="Preuzmi narudžbenicu kao PDF">🖨️ PDF</button></td>
     </tr>
   `).join("");
   body.querySelectorAll(".row-link").forEach((row) => {
-    row.addEventListener("click", () => window.location.href = `./order-detail.html?order=${row.dataset.id}`);
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".pdf-btn")) return; // klik na PDF dugme ne otvara detalje
+      window.location.href = `./order-detail.html?order=${row.dataset.id}`;
+    });
   });
+  body.querySelectorAll(".pdf-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = "Generisanje...";
+      try {
+        await downloadOrderPdf(btn.dataset.pdfId);
+      } catch (err) {
+        console.error(err);
+        toast("Greška pri generisanju PDF-a.", "error");
+      } finally {
+        btn.disabled = false; btn.textContent = original;
+      }
+    });
+  });
+}
+
+// Učitava sve podatke potrebne za PDF (stavke, nabavke, lokacije isporuke, podaci o firmi)
+// direktno iz liste narudžbina — koristi se za "brzi" PDF sa kontrolne table.
+async function downloadOrderPdf(orderId) {
+  const [items, deliveryLocations, purchases, company] = await Promise.all([
+    getOrderItems(companyIdValue, orderId),
+    getOrderDeliveryLocations(companyIdValue, orderId),
+    getOrderPurchases(companyIdValue, orderId),
+    getCompanySettings(companyIdValue),
+  ]);
+  const order = latestOrders.find((o) => o.id === orderId);
+  if (!order) { toast("Narudžbina nije pronađena.", "error"); return; }
+  await generateOrderPdf({ company, order, items, purchases, deliveryLocations });
 }
