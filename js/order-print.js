@@ -25,6 +25,39 @@ async function ensureLibs() {
   ]);
 }
 
+async function loadLibsAndFont() {
+  await ensureLibs();
+  // Font se učitava dinamički (lazy) — fajl je ~2MB base64, ne opterećuje običan prikaz stranice.
+  const { DEJAVU_SANS_REGULAR_B64, DEJAVU_SANS_BOLD_B64 } = await import("./fonts-dejavu.js");
+  ensureFontFace(DEJAVU_SANS_REGULAR_B64, DEJAVU_SANS_BOLD_B64);
+  // Sačekaj da font zaista bude spreman pre nego što html2canvas snimi sadržaj — u suprotnom
+  // može doći do "flash" efekta gde se prvo renderuje sistemski font.
+  await document.fonts.load("400 12px 'DejaVu Sans'");
+  await document.fonts.load("700 12px 'DejaVu Sans'");
+  await document.fonts.ready;
+}
+
+function ensureFontFace(regularB64, boldB64) {
+  if (document.getElementById("dejavu-font-face")) return;
+  const style = document.createElement("style");
+  style.id = "dejavu-font-face";
+  style.textContent = `
+    @font-face {
+      font-family: "DejaVu Sans";
+      src: url(data:font/truetype;charset=utf-8;base64,${regularB64}) format("truetype");
+      font-weight: normal;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "DejaVu Sans";
+      src: url(data:font/truetype;charset=utf-8;base64,${boldB64}) format("truetype");
+      font-weight: bold;
+      font-style: normal;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function fmtAmount(n, currency) {
   return `${(Number(n) || 0).toLocaleString("sr-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
@@ -106,7 +139,7 @@ function buildOrderHtml({ company, order, items, purchases, deliveryLocations })
   const generatedAt = new Date().toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return `
-    <div style="font-family: Arial, Helvetica, sans-serif; color:#1a1d21; width:760px; padding:0;">
+    <div style="font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; color:#1a1d21; width:760px; padding:0;">
 
       <!-- ZAGLAVLJE FIRME -->
       <div style="border-bottom:2px solid #1a1d21; padding-bottom:10px; margin-bottom:16px;">
@@ -180,7 +213,7 @@ function buildOrderHtml({ company, order, items, purchases, deliveryLocations })
 // purchases: nabavke po dobavljaču (za finansijski pregled, može biti prazan niz)
 // deliveryLocations: lokacije isporuke narudžbine
 export async function generateOrderPdf({ company, order, items, purchases = [], deliveryLocations = [] }) {
-  await ensureLibs();
+  await loadLibsAndFont();
   // eslint-disable-next-line no-undef
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF("p", "pt", "a4");
@@ -201,7 +234,7 @@ export async function generateOrderPdf({ company, order, items, purchases = [], 
         callback: () => resolve(),
         html2canvas: { scale: 0.7, useCORS: true },
       });
-      setTimeout(() => reject(new Error("Isteklo vreme za generisanje PDF-a.")), 20000);
+      setTimeout(() => reject(new Error("Isteklo vreme za generisanje PDF-a.")), 25000);
     });
   } finally {
     document.body.removeChild(container);
