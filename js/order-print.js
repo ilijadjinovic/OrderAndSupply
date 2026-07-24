@@ -35,13 +35,11 @@ async function loadLibsAndFont() {
   await document.fonts.load("400 12px 'DejaVu Sans'");
   await document.fonts.load("700 12px 'DejaVu Sans'");
   await document.fonts.ready;
+  return { regularB64: DEJAVU_SANS_REGULAR_B64, boldB64: DEJAVU_SANS_BOLD_B64 };
 }
 
-function ensureFontFace(regularB64, boldB64) {
-  if (document.getElementById("dejavu-font-face")) return;
-  const style = document.createElement("style");
-  style.id = "dejavu-font-face";
-  style.textContent = `
+function fontFaceCss(regularB64, boldB64) {
+  return `
     @font-face {
       font-family: "DejaVu Sans";
       src: url(data:font/truetype;charset=utf-8;base64,${regularB64}) format("truetype");
@@ -55,6 +53,18 @@ function ensureFontFace(regularB64, boldB64) {
       font-style: normal;
     }
   `;
+}
+
+// Font-face pravilo se dodaje i u <head> (da bi document.fonts.load/ready mogao da ga učita
+// unapred), ALI jsPDF-ov .html()/html2canvas ne "vidi" stilove iz <head> dokumenta — on snima
+// samo prosleđeni element. Zato se isto @font-face pravilo mora ponoviti i kao <style> UNUTAR
+// kontejnera koji se predaje doc.html() (vidi generateOrderPdf) — inače font tiho pada nazad
+// na Arial/Helvetica iako je "učitan".
+function ensureFontFace(regularB64, boldB64) {
+  if (document.getElementById("dejavu-font-face")) return;
+  const style = document.createElement("style");
+  style.id = "dejavu-font-face";
+  style.textContent = fontFaceCss(regularB64, boldB64);
   document.head.appendChild(style);
 }
 
@@ -213,7 +223,7 @@ function buildOrderHtml({ company, order, items, purchases, deliveryLocations })
 // purchases: nabavke po dobavljaču (za finansijski pregled, može biti prazan niz)
 // deliveryLocations: lokacije isporuke narudžbine
 export async function generateOrderPdf({ company, order, items, purchases = [], deliveryLocations = [] }) {
-  await loadLibsAndFont();
+  const { regularB64, boldB64 } = await loadLibsAndFont();
   // eslint-disable-next-line no-undef
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF("p", "pt", "a4");
@@ -224,7 +234,10 @@ export async function generateOrderPdf({ company, order, items, purchases = [], 
   // prostora bio nevidljiv i PDF bi ispao prazan. Umesto toga ostaje na (0,0) i sakriva
   // se iza ostatka stranice pomoću negativnog z-index-a.
   container.style.cssText = "position:absolute; top:0; left:0; z-index:-9999; background:#fff;";
-  container.innerHTML = buildOrderHtml({ company, order, items, purchases, deliveryLocations });
+  // @font-face MORA biti unutar kontejnera (ne samo u <head>) — jsPDF/html2canvas snima
+  // samo prosleđeni element i ne "vidi" stilove definisane van njega.
+  container.innerHTML = `<style>${fontFaceCss(regularB64, boldB64)}</style>`
+    + buildOrderHtml({ company, order, items, purchases, deliveryLocations });
   document.body.appendChild(container);
 
   try {

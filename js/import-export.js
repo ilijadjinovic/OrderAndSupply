@@ -66,11 +66,8 @@ export async function exportExcel(filename, rows, sheetName = "Podaci") {
 
 // --- IZVOZ PDF (tabela) — koristi HTML + html2canvas + DejaVu Sans font, isto
 // kao narudžbenica (order-print.js), da bi č/ć/š/ž/đ i traženi font bili ispravni.
-async function ensureFontFace(regularB64, boldB64) {
-  if (document.getElementById("dejavu-font-face")) return;
-  const style = document.createElement("style");
-  style.id = "dejavu-font-face";
-  style.textContent = `
+function fontFaceCss(regularB64, boldB64) {
+  return `
     @font-face {
       font-family: "DejaVu Sans";
       src: url(data:font/truetype;charset=utf-8;base64,${regularB64}) format("truetype");
@@ -84,6 +81,17 @@ async function ensureFontFace(regularB64, boldB64) {
       font-style: normal;
     }
   `;
+}
+
+// Font-face pravilo se dodaje i u <head> (da bi document.fonts.load/ready mogao unapred da ga
+// učita), ALI jsPDF-ov .html()/html2canvas snima SAMO prosleđeni element — stilove iz <head>
+// ne "vidi". Zato se isto pravilo mora ponoviti kao <style> UNUTAR kontejnera koji se predaje
+// doc.html() (vidi exportPdf), inače font tiho pada nazad na Arial/Helvetica.
+function ensureFontFace(regularB64, boldB64) {
+  if (document.getElementById("dejavu-font-face")) return;
+  const style = document.createElement("style");
+  style.id = "dejavu-font-face";
+  style.textContent = fontFaceCss(regularB64, boldB64);
   document.head.appendChild(style);
 }
 
@@ -98,6 +106,7 @@ async function ensureLibsAndFont() {
   await document.fonts.load("400 12px 'DejaVu Sans'");
   await document.fonts.load("700 12px 'DejaVu Sans'");
   await document.fonts.ready;
+  return { regularB64: DEJAVU_SANS_REGULAR_B64, boldB64: DEJAVU_SANS_BOLD_B64 };
 }
 
 function escapeHtmlPdf(str) {
@@ -105,7 +114,7 @@ function escapeHtmlPdf(str) {
 }
 
 export async function exportPdf(filename, title, rows) {
-  await ensureLibsAndFont();
+  const { regularB64, boldB64 } = await ensureLibsAndFont();
   // eslint-disable-next-line no-undef
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF("p", "pt", "a4");
@@ -116,6 +125,7 @@ export async function exportPdf(filename, title, rows) {
   // unutar virtuelnog prozora veličine windowWidth, pa bi PDF ispao prazan.
   container.style.cssText = "position:absolute; top:0; left:0; z-index:-9999; background:#fff;";
   container.innerHTML = `
+    <style>${fontFaceCss(regularB64, boldB64)}</style>
     <div style="font-family:'DejaVu Sans', Arial, Helvetica, sans-serif; color:#1a1d21; width:760px;">
       <div style="font-size:17px; font-weight:700; margin-bottom:14px;">${escapeHtmlPdf(title)}</div>
       <table style="width:100%; border-collapse:collapse; font-size:10.5px;">
