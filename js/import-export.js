@@ -18,8 +18,13 @@ async function ensureLibs() {
   await Promise.all([
     loadScript("https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"),
     loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"),
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"),
   ]);
+}
+
+async function getJsPDF() {
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF;
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+  return window.jspdf.jsPDF;
 }
 
 // --- UVOZ ---
@@ -64,102 +69,126 @@ export async function exportExcel(filename, rows, sheetName = "Podaci") {
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-// --- IZVOZ PDF (tabela) — koristi HTML + html2canvas + DejaVu Sans font, isto
-// kao narudžbenica (order-print.js), da bi č/ć/š/ž/đ i traženi font bili ispravni.
-function fontFaceCss(regularB64, boldB64) {
-  return `
-    @font-face {
-      font-family: "DejaVu Sans";
-      src: url(data:font/truetype;charset=utf-8;base64,${regularB64}) format("truetype");
-      font-weight: normal;
-      font-style: normal;
-    }
-    @font-face {
-      font-family: "DejaVu Sans";
-      src: url(data:font/truetype;charset=utf-8;base64,${boldB64}) format("truetype");
-      font-weight: bold;
-      font-style: normal;
-    }
-  `;
-}
+// --- IZVOZ PDF (tabela) ---
+// PDF se crta direktno kroz jsPDF native API (font registrovan preko
+// addFileToVFS/addFont, tekst ispisan sa pdf.text() na mm koordinatama) — isti
+// pouzdan pristup kao reports.js i order-print.js. Ranija verzija je koristila
+// jsPDF .html() + html2canvas (rasterizacija HTML-a preko slike u canvasu),
+// ali html2canvas ume da pogrešno izmeri ili potpuno izgubi glifove iz custom
+// TTF fonta za srpske dijakritike (č/ć/š/ž/đ). Native crtanje teksta nikad ne
+// rasterizuje sadržaj, pa ovog problema nema — usput otpada i zavisnost od
+// html2canvas biblioteke (više se ne učitava).
+const REPORT_FONT = "DejaVuSans";
+const M  = 15;   // margina
+const PW = 180;  // širina sadržaja (A4 210 - 2*15)
+const PH = 277;  // iskoristiva visina stranice
 
-// Font-face pravilo se dodaje i u <head> (da bi document.fonts.load/ready mogao unapred da ga
-// učita), ALI jsPDF-ov .html()/html2canvas snima SAMO prosleđeni element — stilove iz <head>
-// ne "vidi". Zato se isto pravilo mora ponoviti kao <style> UNUTAR kontejnera koji se predaje
-// doc.html() (vidi exportPdf), inače font tiho pada nazad na Arial/Helvetica.
-function ensureFontFace(regularB64, boldB64) {
-  if (document.getElementById("dejavu-font-face")) return;
-  const style = document.createElement("style");
-  style.id = "dejavu-font-face";
-  style.textContent = fontFaceCss(regularB64, boldB64);
-  document.head.appendChild(style);
-}
-
-async function ensureLibsAndFont() {
-  await Promise.all([
-    ensureLibs(),
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
-  ]);
-  // Font se učitava dinamički (lazy) — ne opterećuje običan prikaz stranice.
+// Font se učitava dinamički (lazy) — fajl je ~2MB base64, ne opterećuje
+// običan prikaz stranice.
+async function registerFont(pdf) {
   const { DEJAVU_SANS_REGULAR_B64, DEJAVU_SANS_BOLD_B64 } = await import("./fonts-dejavu.js");
-  ensureFontFace(DEJAVU_SANS_REGULAR_B64, DEJAVU_SANS_BOLD_B64);
-  await document.fonts.load("400 12px 'DejaVu Sans'");
-  await document.fonts.load("700 12px 'DejaVu Sans'");
-  await document.fonts.ready;
-  return { regularB64: DEJAVU_SANS_REGULAR_B64, boldB64: DEJAVU_SANS_BOLD_B64 };
+  pdf.addFileToVFS("DejaVuSans.ttf", DEJAVU_SANS_REGULAR_B64);
+  pdf.addFileToVFS("DejaVuSans-Bold.ttf", DEJAVU_SANS_BOLD_B64);
+  pdf.addFont("DejaVuSans.ttf", REPORT_FONT, "normal");
+  pdf.addFont("DejaVuSans-Bold.ttf", REPORT_FONT, "bold");
+  pdf.setFont(REPORT_FONT, "normal");
 }
 
-function escapeHtmlPdf(str) {
-  return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function checkPageBreak(pdf, y, needed = 10) {
+  if (y + needed > PH) {
+    pdf.addPage();
+    return M + 10;
+  }
+  return y;
+}
+
+function drawPageNumbers(pdf) {
+  const pageCount = pdf.internal.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    pdf.setPage(p);
+    pdf.setFont(REPORT_FONT, "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(150);
+    pdf.text(`Strana ${p}/${pageCount}`, M + PW, PH + 10, { align: "right" });
+  }
+}
+
+function drawTableHeader(pdf, cols, y) {
+  y = checkPageBreak(pdf, y, 9);
+  pdf.setFillColor(243, 245, 248);
+  pdf.rect(M, y - 4, PW, 7, "F");
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(8);
+  pdf.setTextColor(26, 29, 33);
+  let x = M;
+  cols.forEach(([label, width]) => {
+    const lines = pdf.splitTextToSize(String(label), width - 3);
+    pdf.text(lines[0] || "", x + 2, y);
+    x += width;
+  });
+  return y + 6;
+}
+
+// Prelama tekst po celim rečima — visina reda raste sa brojem linija koje
+// zahteva najduži sadržaj ćelije u tom redu.
+function drawTableRowWrapped(pdf, cols, values, y, shade = false) {
+  const lineH = 4;
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setFontSize(8);
+  const wrapped = cols.map(([, width], i) => pdf.splitTextToSize(String(values[i] ?? ""), width - 3));
+  const maxLines = Math.max(1, ...wrapped.map((w) => w.length));
+  const rowHeight = maxLines * lineH + 2;
+
+  y = checkPageBreak(pdf, y, rowHeight + 2);
+  if (shade) {
+    pdf.setFillColor(250, 251, 252);
+    pdf.rect(M, y - 3.2, PW, rowHeight, "F");
+  }
+
+  pdf.setTextColor(40);
+  let x = M;
+  cols.forEach(([, width], i) => {
+    let ly = y;
+    wrapped[i].forEach((line) => { pdf.text(line, x + 2, ly); ly += lineH; });
+    x += width;
+  });
+
+  return y + rowHeight;
 }
 
 export async function exportPdf(filename, title, rows) {
-  const { regularB64, boldB64 } = await ensureLibsAndFont();
-  // eslint-disable-next-line no-undef
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF("p", "pt", "a4");
+  const JsPDF = await getJsPDF();
+  const pdf = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  await registerFont(pdf);
 
-  const headers = rows.length ? Object.keys(rows[0]) : [];
-  const container = document.createElement("div");
-  // Ne pomerati van vidljivog prostora (npr. left:-9999px) — html2canvas snima samo
-  // unutar virtuelnog prozora veličine windowWidth, pa bi PDF ispao prazan.
-  container.style.cssText = "position:absolute; top:0; left:0; z-index:-9999; background:#fff;";
-  container.innerHTML = `
-    <style>${fontFaceCss(regularB64, boldB64)}</style>
-    <div style="font-family:'DejaVu Sans', Arial, Helvetica, sans-serif; color:#1a1d21; width:760px;">
-      <div style="font-size:17px; font-weight:700; margin-bottom:14px;">${escapeHtmlPdf(title)}</div>
-      <table style="width:100%; border-collapse:collapse; font-size:10.5px;">
-        <thead>
-          <tr style="background:#f3f5f8;">
-            ${headers.map((h) => `<th style="text-align:left; padding:6px 8px; border-bottom:1px solid #d8dde3;">${escapeHtmlPdf(h)}</th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((r) => `
-            <tr>
-              ${headers.map((h) => `<td style="padding:5px 8px; border-bottom:1px solid #f0f2f4;">${escapeHtmlPdf(r[h])}</td>`).join("")}
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-  document.body.appendChild(container);
+  let y = M;
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(15);
+  pdf.setTextColor(26, 29, 33);
+  pdf.text(title, M, y);
+  y += 10;
 
-  try {
-    await new Promise((resolve, reject) => {
-      doc.html(container, {
-        x: 20, y: 20, width: 555, windowWidth: 800,
-        callback: () => resolve(),
-        html2canvas: { scale: 0.7, useCORS: true },
-      });
-      setTimeout(() => reject(new Error("Isteklo vreme za generisanje PDF-a.")), 25000);
-    });
-  } finally {
-    document.body.removeChild(container);
+  if (!rows.length) {
+    pdf.setFont(REPORT_FONT, "normal");
+    pdf.setFontSize(10);
+    pdf.setTextColor(120);
+    pdf.text("Nema podataka za prikaz.", M, y);
+    drawPageNumbers(pdf);
+    pdf.save(`${filename}.pdf`);
+    return;
   }
 
-  doc.save(`${filename}.pdf`);
+  const headers = Object.keys(rows[0]);
+  const colWidth = PW / headers.length;
+  const cols = headers.map((h) => [h, colWidth]);
+
+  y = drawTableHeader(pdf, cols, y);
+  rows.forEach((r, i) => {
+    y = drawTableRowWrapped(pdf, cols, headers.map((h) => r[h]), y, i % 2 === 0);
+  });
+
+  drawPageNumbers(pdf);
+  pdf.save(`${filename}.pdf`);
 }
 
 function downloadBlob(blob, filename) {

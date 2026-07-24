@@ -3,11 +3,17 @@
 // Zaglavlje firme + stavke grupisane po dobavljaču (kao u app-u) + finansijski
 // pregled (ako je uneto) + mesta za potpis naručioca/isporučioca i overu.
 //
-// Koristi jsPDF .html() (uz html2canvas) umesto ručnog upisivanja teksta na
-// koordinate, jer tako ispravno renderuje srpske dijakritičke znakove
-// (č, ć, š, ž, đ) — ugrađeni jsPDF fontovi (WinAnsi) ih ne podržavaju.
+// PDF se crta direktno kroz jsPDF native API (font registrovan preko
+// addFileToVFS/addFont, tekst ispisan sa pdf.text() na mm koordinatama) — isti
+// pouzdan pristup kao reports.js. Ranija verzija je koristila jsPDF .html() +
+// html2canvas (rasterizacija HTML-a u canvas), ali se pokazalo da html2canvas
+// ume da pogrešno izmeri ili potpuno izgubi glifove iz custom TTF fonta za
+// srpske dijakritike (č/ć/š/ž/đ) — rezultat je bio npr. "Naru ilac" umesto
+// "Naručilac" i razvučen/slepljen razmak između slova. Native crtanje teksta
+// nikad ne rasterizuje sadržaj, pa ovog problema nema — font se u PDF ugrađuje
+// direktno kao pravi (selektabilan/pretraživ) vektorski font.
 // ============================================================================
-import { escapeHtml, formatDate } from "./utils.js";
+import { formatDate } from "./utils.js";
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -18,54 +24,48 @@ function loadScript(src) {
   });
 }
 
-async function ensureLibs() {
-  await Promise.all([
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"),
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
-  ]);
+async function getJsPDF() {
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF;
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+  return window.jspdf.jsPDF;
 }
 
-async function loadLibsAndFont() {
-  await ensureLibs();
-  // Font se učitava dinamički (lazy) — fajl je ~2MB base64, ne opterećuje običan prikaz stranice.
+const REPORT_FONT = "DejaVuSans";
+
+// Font se učitava dinamički (lazy) — fajl je ~2MB base64, ne opterećuje
+// običan prikaz stranice — i registruje direktno u jsPDF-u (addFileToVFS +
+// addFont), umesto kroz CSS @font-face kao ranije.
+async function registerFont(pdf) {
   const { DEJAVU_SANS_REGULAR_B64, DEJAVU_SANS_BOLD_B64 } = await import("./fonts-dejavu.js");
-  ensureFontFace(DEJAVU_SANS_REGULAR_B64, DEJAVU_SANS_BOLD_B64);
-  // Sačekaj da font zaista bude spreman pre nego što html2canvas snimi sadržaj — u suprotnom
-  // može doći do "flash" efekta gde se prvo renderuje sistemski font.
-  await document.fonts.load("400 12px 'DejaVu Sans'");
-  await document.fonts.load("700 12px 'DejaVu Sans'");
-  await document.fonts.ready;
-  return { regularB64: DEJAVU_SANS_REGULAR_B64, boldB64: DEJAVU_SANS_BOLD_B64 };
+  pdf.addFileToVFS("DejaVuSans.ttf", DEJAVU_SANS_REGULAR_B64);
+  pdf.addFileToVFS("DejaVuSans-Bold.ttf", DEJAVU_SANS_BOLD_B64);
+  pdf.addFont("DejaVuSans.ttf", REPORT_FONT, "normal");
+  pdf.addFont("DejaVuSans-Bold.ttf", REPORT_FONT, "bold");
+  pdf.setFont(REPORT_FONT, "normal");
 }
 
-function fontFaceCss(regularB64, boldB64) {
-  return `
-    @font-face {
-      font-family: "DejaVu Sans";
-      src: url(data:font/truetype;charset=utf-8;base64,${regularB64}) format("truetype");
-      font-weight: normal;
-      font-style: normal;
-    }
-    @font-face {
-      font-family: "DejaVu Sans";
-      src: url(data:font/truetype;charset=utf-8;base64,${boldB64}) format("truetype");
-      font-weight: bold;
-      font-style: normal;
-    }
-  `;
+// ── LAYOUT KONSTANTE (A4 portrait, mm) ─────────────────────────
+const M  = 15;   // margina
+const PW = 180;  // širina sadržaja (210 - 2*15)
+const PH = 277;  // iskoristiva visina stranice
+
+function checkPageBreak(pdf, y, needed = 10) {
+  if (y + needed > PH) {
+    pdf.addPage();
+    return M + 10;
+  }
+  return y;
 }
 
-// Font-face pravilo se dodaje i u <head> (da bi document.fonts.load/ready mogao da ga učita
-// unapred), ALI jsPDF-ov .html()/html2canvas ne "vidi" stilove iz <head> dokumenta — on snima
-// samo prosleđeni element. Zato se isto @font-face pravilo mora ponoviti i kao <style> UNUTAR
-// kontejnera koji se predaje doc.html() (vidi generateOrderPdf) — inače font tiho pada nazad
-// na Arial/Helvetica iako je "učitan".
-function ensureFontFace(regularB64, boldB64) {
-  if (document.getElementById("dejavu-font-face")) return;
-  const style = document.createElement("style");
-  style.id = "dejavu-font-face";
-  style.textContent = fontFaceCss(regularB64, boldB64);
-  document.head.appendChild(style);
+function drawPageNumbers(pdf) {
+  const pageCount = pdf.internal.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    pdf.setPage(p);
+    pdf.setFont(REPORT_FONT, "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(150);
+    pdf.text(`Strana ${p}/${pageCount}`, M + PW, PH + 10, { align: "right" });
+  }
 }
 
 function fmtAmount(n, currency) {
@@ -74,147 +74,243 @@ function fmtAmount(n, currency) {
 function fmtIsoDate(isoStr) {
   if (!isoStr) return "—";
   const d = new Date(isoStr + "T00:00:00");
-  if (isNaN(d)) return escapeHtml(isoStr);
+  if (isNaN(d)) return String(isoStr);
   return d.toLocaleDateString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function buildOrderHtml({ company, order, items, purchases, deliveryLocations }) {
-  const currency = company?.currency || "RSD";
-  const bySupplier = {};
-  items.forEach((i) => {
-    (bySupplier[i.supplierId] ||= { name: i.supplierName, items: [] }).items.push(i);
+// ── GENERIČKA TABELA (cols: [label, width, align?]) ────────────
+function drawTableHeader(pdf, cols, y) {
+  y = checkPageBreak(pdf, y, 9);
+  pdf.setFillColor(243, 245, 248);
+  pdf.rect(M, y - 4, PW, 7, "F");
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(26, 29, 33);
+  let x = M;
+  cols.forEach(([label, width, align]) => {
+    if (align === "right") pdf.text(label, x + width - 2, y, { align: "right" });
+    else pdf.text(label, x + 2, y);
+    x += width;
+  });
+  return y + 6;
+}
+
+// Prelama tekst po celim rečima (pdf.splitTextToSize) — visina reda raste
+// sa brojem linija koje zahteva najduži tekst u tom redu (npr. dug naziv
+// proizvoda ili napomena).
+function drawTableRowWrapped(pdf, cols, values, y, shade = false) {
+  const lineH = 4.2;
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setFontSize(8.5);
+  const wrapped = cols.map(([, width], i) => pdf.splitTextToSize(String(values[i] ?? "—"), width - 4));
+  const maxLines = Math.max(1, ...wrapped.map((w) => w.length));
+  const rowHeight = maxLines * lineH + 2;
+
+  y = checkPageBreak(pdf, y, rowHeight + 2);
+  if (shade) {
+    pdf.setFillColor(250, 251, 252);
+    pdf.rect(M, y - 3.5, PW, rowHeight, "F");
+  }
+
+  pdf.setTextColor(40);
+  let x = M;
+  cols.forEach(([, width, align], i) => {
+    let ly = y;
+    wrapped[i].forEach((line) => {
+      if (align === "right") pdf.text(line, x + width - 2, ly, { align: "right" });
+      else pdf.text(line, x + 2, ly);
+      ly += lineH;
+    });
+    x += width;
   });
 
-  const supplierBlocks = Object.values(bySupplier).map((group) => `
-    <div style="margin-top:16px; border:1px solid #d8dde3; border-radius:6px; overflow:hidden;">
-      <div style="background:#f3f5f8; padding:8px 12px; font-weight:700; font-size:13px; border-bottom:1px solid #d8dde3;">
-        Dobavljač: ${escapeHtml(group.name)}
-      </div>
-      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
-        <thead>
-          <tr style="background:#fafbfc;">
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Proizvod</th>
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Količina</th>
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Lokacija isporuke</th>
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Napomena</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${group.items.map((it) => `
-            <tr>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4;">${escapeHtml(it.productName)}</td>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4;">${it.quantity} ${escapeHtml(it.unit)}</td>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4;">${escapeHtml(it.deliveryLocationName || "—")}</td>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4; color:#555;">${escapeHtml(it.note || "—")}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `).join("");
+  return y + rowHeight;
+}
 
-  const total = (purchases || []).reduce((s, p) => s + (Number(p.paidAmount) || 0), 0);
-  const financeSection = total > 0 ? `
-    <div style="margin-top:22px;">
-      <div style="font-weight:700; font-size:13px; margin-bottom:6px;">Finansijski pregled</div>
-      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
-        <thead>
-          <tr style="background:#fafbfc;">
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Dobavljač</th>
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Broj računa</th>
-            <th style="text-align:left; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Datum računa</th>
-            <th style="text-align:right; padding:6px 12px; border-bottom:1px solid #e5e8ec;">Iznos</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${purchases.filter((p) => p.paidAmount).map((p) => `
-            <tr>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4;">${escapeHtml(p.supplierName)}</td>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4;">${escapeHtml(p.receiptNumber || "—")}</td>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4;">${fmtIsoDate(p.receiptDate)}</td>
-              <td style="padding:6px 12px; border-bottom:1px solid #f0f2f4; text-align:right;">${fmtAmount(p.paidAmount, currency)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" style="padding:8px 12px; text-align:right; font-weight:700;">UKUPNO ZA NARUDŽBINU:</td>
-            <td style="padding:8px 12px; text-align:right; font-weight:700;">${fmtAmount(total, currency)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  ` : "";
+// ── ZAGLAVLJE FIRME ─────────────────────────────────────────────
+function drawCompanyHeader(pdf, company) {
+  let y = M;
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(16);
+  pdf.setTextColor(26, 29, 33);
+  pdf.text(company?.name || "Firma", M, y);
+  y += 6;
 
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(85);
+  const lines = [];
+  if (company?.address) lines.push(`Adresa: ${company.address}`);
+  const pibLine = [
+    company?.pib ? `PIB: ${company.pib}` : null,
+    company?.maticniBroj ? `Matični broj: ${company.maticniBroj}` : null,
+  ].filter(Boolean).join("   ·   ");
+  if (pibLine) lines.push(pibLine);
+  if (company?.phone) lines.push(`Telefon: ${company.phone}`);
+  lines.forEach((line) => { pdf.text(line, M, y); y += 4.5; });
+
+  y += 2;
+  pdf.setDrawColor(26, 29, 33);
+  pdf.setLineWidth(0.6);
+  pdf.line(M, y, M + PW, y);
+  return y + 8;
+}
+
+// ── NASLOV + META PODACI ─────────────────────────────────────────
+function drawOrderTitle(pdf, order, y) {
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(14);
+  pdf.setTextColor(26, 29, 33);
+  pdf.text(`NARUDŽBENICA br. ${order.orderNumber}`, M, y);
+
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(85);
+  pdf.text(`Datum kreiranja: ${formatDate(order.createdAt)}`, M + PW, y - 4, { align: "right" });
+  pdf.text(`Prioritet: ${order.priority === "hitno" ? "Hitno" : "Standardno"}`, M + PW, y, { align: "right" });
+
+  return y + 9;
+}
+
+function drawOrderMeta(pdf, order, deliveryLocations, y) {
+  y = checkPageBreak(pdf, y, 16);
+  pdf.setFontSize(9.5);
+
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setTextColor(85);
+  pdf.text("Naručilac:", M, y);
+  pdf.text("Isporučilac:", M + 95, y);
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setTextColor(30);
+  pdf.text(order.createdByName || "—", M + 26, y);
+  pdf.text(order.assignedToName || "—", M + 122, y);
+  y += 6;
+
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setTextColor(85);
+  pdf.text("Lokacije isporuke:", M, y);
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setTextColor(30);
+  const locText = (deliveryLocations || []).map((l) => l.locationName).join(", ") || "—";
+  const locLines = pdf.splitTextToSize(locText, PW - 42);
+  pdf.text(locLines, M + 42, y);
+  y += locLines.length * 4.5;
+
+  return y + 5;
+}
+
+// ── STAVKE PO DOBAVLJAČU ─────────────────────────────────────────
+function drawSupplierSection(pdf, group, y) {
+  y = checkPageBreak(pdf, y, 22);
+  pdf.setFillColor(243, 245, 248);
+  pdf.rect(M, y - 4, PW, 7, "F");
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(10.5);
+  pdf.setTextColor(26, 29, 33);
+  pdf.text(`Dobavljač: ${group.name}`, M + 2, y);
+  y += 8;
+
+  const cols = [
+    ["Proizvod", 62],
+    ["Količina", 22],
+    ["Lokacija isporuke", 48],
+    ["Napomena", 48],
+  ];
+  y = drawTableHeader(pdf, cols, y);
+  group.items.forEach((it, i) => {
+    y = drawTableRowWrapped(pdf, cols, [
+      it.productName,
+      `${it.quantity} ${it.unit}`,
+      it.deliveryLocationName || "—",
+      it.note || "—",
+    ], y, i % 2 === 0);
+  });
+
+  return y + 6;
+}
+
+// ── FINANSIJSKI PREGLED ─────────────────────────────────────────
+function drawFinanceSection(pdf, purchases, currency, total, y) {
+  y = checkPageBreak(pdf, y, 22);
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(10.5);
+  pdf.setTextColor(26, 29, 33);
+  pdf.text("Finansijski pregled", M, y);
+  y += 6;
+
+  const cols = [
+    ["Dobavljač", 55],
+    ["Broj računa", 45],
+    ["Datum računa", 35],
+    ["Iznos", 45, "right"],
+  ];
+  y = drawTableHeader(pdf, cols, y);
+  purchases.filter((p) => p.paidAmount).forEach((p, i) => {
+    y = drawTableRowWrapped(pdf, cols, [
+      p.supplierName,
+      p.receiptNumber || "—",
+      fmtIsoDate(p.receiptDate),
+      fmtAmount(p.paidAmount, currency),
+    ], y, i % 2 === 0);
+  });
+
+  y = checkPageBreak(pdf, y, 9);
+  pdf.setDrawColor(216, 221, 227);
+  pdf.setLineWidth(0.3);
+  pdf.line(M, y - 3, M + PW, y - 3);
+  pdf.setFont(REPORT_FONT, "bold");
+  pdf.setFontSize(9.5);
+  pdf.setTextColor(26, 29, 33);
+  pdf.text("UKUPNO ZA NARUDŽBINU:", M + PW - 47, y, { align: "right" });
+  pdf.text(fmtAmount(total, currency), M + PW, y, { align: "right" });
+
+  return y + 9;
+}
+
+// ── OVERA + POTPISI ───────────────────────────────────────────
+function drawApproval(pdf, y) {
+  y = checkPageBreak(pdf, y, 20);
+  pdf.setDrawColor(216, 221, 227);
+  pdf.setLineWidth(0.3);
+  pdf.line(M, y, M + PW, y);
+  y += 7;
+
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setFontSize(9.5);
+  pdf.setTextColor(30);
+  pdf.text("☐  Narudžbina je realizovana i po istoj je postupljeno u celosti.", M, y);
+  y += 7;
+  pdf.text("Datum overe: ______________________", M, y);
+  return y + 14;
+}
+
+function drawSignatures(pdf, y) {
+  y = checkPageBreak(pdf, y, 24);
+  const colW = PW / 3;
+  const labels = ["Naručilac", "Isporučilac", "Overio (rukovodilac)"];
+  labels.forEach((label, i) => {
+    const x = M + i * colW;
+    pdf.setDrawColor(26, 29, 33);
+    pdf.setLineWidth(0.4);
+    pdf.line(x, y, x + colW - 8, y);
+    pdf.setFont(REPORT_FONT, "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(30);
+    pdf.text(label, x, y + 4.5);
+    pdf.setTextColor(85);
+    pdf.setFontSize(8);
+    pdf.text("Datum: ______________", x, y + 10);
+  });
+  return y + 18;
+}
+
+function drawFooter(pdf, y) {
+  y = checkPageBreak(pdf, y, 6);
   const generatedAt = new Date().toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-  return `
-    <div style="font-family: 'DejaVu Sans', Arial, Helvetica, sans-serif; color:#1a1d21; width:760px; padding:0;">
-
-      <!-- ZAGLAVLJE FIRME -->
-      <div style="border-bottom:2px solid #1a1d21; padding-bottom:10px; margin-bottom:16px;">
-        <div style="font-size:19px; font-weight:700;">${escapeHtml(company?.name || "Firma")}</div>
-        <div style="font-size:11px; color:#555; margin-top:4px; line-height:1.5;">
-          ${company?.address ? `Adresa: ${escapeHtml(company.address)}<br/>` : ""}
-          ${company?.pib ? `PIB: ${escapeHtml(company.pib)}${company?.maticniBroj ? ` &nbsp;·&nbsp; Matični broj: ${escapeHtml(company.maticniBroj)}` : ""}<br/>` : ""}
-          ${company?.phone ? `Telefon: ${escapeHtml(company.phone)}` : ""}
-        </div>
-      </div>
-
-      <!-- NASLOV + META -->
-      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-        <div style="font-size:17px; font-weight:700;">NARUDŽBENICA br. ${escapeHtml(order.orderNumber)}</div>
-        <div style="font-size:11px; color:#555; text-align:right;">
-          Datum kreiranja: ${formatDate(order.createdAt)}<br/>
-          Prioritet: ${order.priority === "hitno" ? "Hitno" : "Standardno"}
-        </div>
-      </div>
-
-      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:12px;">
-        <tr>
-          <td style="padding:4px 0; width:120px; color:#555;">Naručilac:</td>
-          <td style="padding:4px 0; font-weight:600;">${escapeHtml(order.createdByName || "—")}</td>
-          <td style="padding:4px 0; width:120px; color:#555;">Isporučilac:</td>
-          <td style="padding:4px 0; font-weight:600;">${escapeHtml(order.assignedToName || "—")}</td>
-        </tr>
-        <tr>
-          <td style="padding:4px 0; color:#555;">Lokacije isporuke:</td>
-          <td colspan="3" style="padding:4px 0; font-weight:600;">${(deliveryLocations || []).map((l) => escapeHtml(l.locationName)).join(", ") || "—"}</td>
-        </tr>
-      </table>
-
-      <!-- STAVKE GRUPISANE PO DOBAVLJAČU -->
-      ${supplierBlocks}
-
-      ${financeSection}
-
-      <!-- OVERA -->
-      <div style="margin-top:26px; padding-top:14px; border-top:1px solid #d8dde3; font-size:12px;">
-        <div style="margin-bottom:10px;">☐ &nbsp;Narudžbina je realizovana i po istoj je postupljeno u celosti.</div>
-        <div>Datum overe: ______________________</div>
-      </div>
-
-      <!-- POTPISI -->
-      <table style="width:100%; border-collapse:collapse; margin-top:36px; font-size:11.5px;">
-        <tr>
-          <td style="width:33%; padding-right:14px;">
-            <div style="border-top:1px solid #1a1d21; padding-top:6px;">Naručilac</div>
-            <div style="margin-top:18px; color:#555;">Datum: ______________</div>
-          </td>
-          <td style="width:33%; padding-right:14px;">
-            <div style="border-top:1px solid #1a1d21; padding-top:6px;">Isporučilac</div>
-            <div style="margin-top:18px; color:#555;">Datum: ______________</div>
-          </td>
-          <td style="width:34%;">
-            <div style="border-top:1px solid #1a1d21; padding-top:6px;">Overio (rukovodilac)</div>
-            <div style="margin-top:18px; color:#555;">Datum: ______________</div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="margin-top:24px; font-size:9px; color:#999;">Dokument generisan iz sistema za naručivanje i nabavku — ${generatedAt}</div>
-    </div>
-  `;
+  pdf.setFont(REPORT_FONT, "normal");
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(150);
+  pdf.text(`Dokument generisan iz sistema za naručivanje i nabavku — ${generatedAt}`, M, y);
 }
 
 // company: dokument firme (name, address, pib, maticniBroj, phone, currency)
@@ -223,35 +319,28 @@ function buildOrderHtml({ company, order, items, purchases, deliveryLocations })
 // purchases: nabavke po dobavljaču (za finansijski pregled, može biti prazan niz)
 // deliveryLocations: lokacije isporuke narudžbine
 export async function generateOrderPdf({ company, order, items, purchases = [], deliveryLocations = [] }) {
-  const { regularB64, boldB64 } = await loadLibsAndFont();
-  // eslint-disable-next-line no-undef
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF("p", "pt", "a4");
+  const JsPDF = await getJsPDF();
+  const pdf = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  await registerFont(pdf);
 
-  const container = document.createElement("div");
-  // VAŽNO: ne sme se pomerati van vidljivog prostora (npr. left:-9999px) — html2canvas
-  // snima sadržaj unutar virtuelnog prozora veličine windowWidth, pa bi element van tog
-  // prostora bio nevidljiv i PDF bi ispao prazan. Umesto toga ostaje na (0,0) i sakriva
-  // se iza ostatka stranice pomoću negativnog z-index-a.
-  container.style.cssText = "position:absolute; top:0; left:0; z-index:-9999; background:#fff;";
-  // @font-face MORA biti unutar kontejnera (ne samo u <head>) — jsPDF/html2canvas snima
-  // samo prosleđeni element i ne "vidi" stilove definisane van njega.
-  container.innerHTML = `<style>${fontFaceCss(regularB64, boldB64)}</style>`
-    + buildOrderHtml({ company, order, items, purchases, deliveryLocations });
-  document.body.appendChild(container);
+  let y = drawCompanyHeader(pdf, company);
+  y = drawOrderTitle(pdf, order, y);
+  y = drawOrderMeta(pdf, order, deliveryLocations, y);
 
-  try {
-    await new Promise((resolve, reject) => {
-      doc.html(container, {
-        x: 20, y: 20, width: 555, windowWidth: 800,
-        callback: () => resolve(),
-        html2canvas: { scale: 0.7, useCORS: true },
-      });
-      setTimeout(() => reject(new Error("Isteklo vreme za generisanje PDF-a.")), 25000);
-    });
-  } finally {
-    document.body.removeChild(container);
-  }
+  const bySupplier = {};
+  items.forEach((i) => {
+    (bySupplier[i.supplierId] ||= { name: i.supplierName, items: [] }).items.push(i);
+  });
+  Object.values(bySupplier).forEach((group) => { y = drawSupplierSection(pdf, group, y); });
 
-  doc.save(`Narudzbenica-${order.orderNumber}.pdf`);
+  const currency = company?.currency || "RSD";
+  const total = (purchases || []).reduce((s, p) => s + (Number(p.paidAmount) || 0), 0);
+  if (total > 0) y = drawFinanceSection(pdf, purchases, currency, total, y);
+
+  y = drawApproval(pdf, y);
+  y = drawSignatures(pdf, y);
+  drawFooter(pdf, y);
+  drawPageNumbers(pdf);
+
+  pdf.save(`Narudzbenica-${order.orderNumber}.pdf`);
 }
