@@ -271,6 +271,11 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .data-table .row-link { cursor: pointer; }
 .empty-row td { text-align: center; color: var(--color-text-faint); padding: 34px 12px; }
 
+/* Modifikator: širina kolona fiksirana preko <colgroup> u HTML-u, sadržaj se prelama umesto da širi kolonu */
+table.data-table.table-fixed { table-layout: fixed; }
+table.data-table.table-fixed td { white-space: normal; word-break: break-word; overflow-wrap: break-word; }
+table.data-table.table-fixed th { white-space: normal; }
+
 /* ── BADGES (statusi) ──────────────────────────────────────────────────── */
 .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .badge-gray  { background: var(--color-slate-soft); color: var(--color-slate); }
