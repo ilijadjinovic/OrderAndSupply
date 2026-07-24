@@ -39,9 +39,9 @@ export function listenSuppliers(companyId, callback) {
   });
 }
 
-// --- Lokacije preuzimanja robe za dobavljača (SupLocations) — admin-only, vidi firestore.rules ---
-export async function addSupplierLocation(companyId, supplierId, { name, address = "" }) {
-  const ref = await addDoc(supLocationsCol(companyId, supplierId), { name, address, createdAt: serverTimestamp() });
+// --- Lokacije preuzimanja robe za dobavljača (SupLocations) — narucilac sme da doda, briše samo admin (vidi firestore.rules) ---
+export async function addSupplierLocation(companyId, supplierId, { name, address = "", createdBy }) {
+  const ref = await addDoc(supLocationsCol(companyId, supplierId), { name, address, createdAt: serverTimestamp(), createdBy: createdBy || null });
   return ref.id;
 }
 export function deleteSupplierLocation(companyId, supplierId, locId) {

@@ -29,7 +29,7 @@ function render(suppliers) {
       <td>${escapeHtml(s.email || "—")}</td>
       <td>
         ${canEdit ? `<button class="btn btn-sm btn-outline" data-action="edit" data-id="${s.id}">✎ Izmeni</button>` : ""}
-        ${isAdmin ? `<button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 Lokacije</button>` : ""}
+        <button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 Lokacije</button>
         <a class="btn btn-sm btn-outline" href="./admin-catalog.html?supplier=${s.id}">📦 Katalog</a>
         ${isAdmin ? `<button class="btn btn-sm btn-danger" data-action="delete" data-id="${s.id}">Obriši</button>` : ""}
       </td>
@@ -95,8 +95,7 @@ document.getElementById("supplier-form").addEventListener("submit", async (e) =>
   activeEditId = null;
 });
 
-// Lokacije preuzimanja robe — admin-only (vidi firestore.rules), zato taj deo UI-a
-// učitavamo samo dugmetom koje se prikazuje isključivo adminu (render funkcija iznad).
+// Lokacije preuzimanja robe — naručilac sme da doda, briše samo admin (vidi refreshLocations i firestore.rules).
 const locationModal = document.getElementById("location-modal");
 document.getElementById("close-location-modal").addEventListener("click", () => locationModal.classList.add("hidden"));
 
@@ -108,10 +107,11 @@ async function openLocations(supplierId, name) {
 }
 
 async function refreshLocations() {
+  const isAdmin = currentRole === ROLES.ADMIN;
   const locs = await getSupplierLocations(companyId, activeSupplierId);
   const host = document.getElementById("location-list");
   host.innerHTML = locs.length
-    ? locs.map((l) => `<div class="attachment-item"><span>📍 ${escapeHtml(l.name)} ${l.address ? "— " + escapeHtml(l.address) : ""}</span><button class="btn btn-sm btn-danger" data-id="${l.id}" style="margin-left:auto;">✕</button></div>`).join("")
+    ? locs.map((l) => `<div class="attachment-item"><span>📍 ${escapeHtml(l.name)} ${l.address ? "— " + escapeHtml(l.address) : ""}</span>${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${l.id}" style="margin-left:auto;">✕</button>` : ""}</div>`).join("")
     : `<p class="muted">Nema dodatih lokacija — koristiće se "bilo koja lokacija".</p>`;
   host.querySelectorAll("button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -126,6 +126,7 @@ document.getElementById("location-form").addEventListener("submit", async (e) =>
   await addSupplierLocation(companyId, activeSupplierId, {
     name: document.getElementById("l-name").value.trim(),
     address: document.getElementById("l-address").value.trim(),
+    createdBy: currentUid,
   });
   e.target.reset();
   refreshLocations();
