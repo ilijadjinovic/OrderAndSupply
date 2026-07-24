@@ -5,18 +5,22 @@ import { listenSuppliers, addSupplier, updateSupplier, deleteSupplier, addSuppli
 import { escapeHtml, toast, ROLES } from "./utils.js";
 
 await loadLang();
-let companyId, actorName, activeSupplierId, activeSupplierName;
+let companyId, actorName, currentUid, currentRole, activeSupplierId, activeSupplierName;
 
-requireAuth([ROLES.ADMIN], (user, profile) => {
+requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
   companyId = profile.companyId; actorName = profile.name;
+  currentUid = user.uid; currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
   listenSuppliers(companyId, render);
 });
 
 function render(suppliers) {
+  const isAdmin = currentRole === ROLES.ADMIN;
   const body = document.getElementById("suppliers-body");
   if (!suppliers.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">Nema dobavljača. Dodajte prvog dobavljača.</td></tr>`; return; }
-  body.innerHTML = suppliers.map((s) => `
+  body.innerHTML = suppliers.map((s) => {
+    const canEdit = isAdmin || s.createdBy === currentUid;
+    return `
     <tr>
       <td><strong>${escapeHtml(s.name)}</strong></td>
       <td class="mono">${escapeHtml(s.pib || "—")}</td>
@@ -24,13 +28,14 @@ function render(suppliers) {
       <td>${escapeHtml(s.phone || "—")}</td>
       <td>${escapeHtml(s.email || "—")}</td>
       <td>
-        <button class="btn btn-sm btn-outline" data-action="edit" data-id="${s.id}">✎ Izmeni</button>
-        <button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 Lokacije</button>
+        ${canEdit ? `<button class="btn btn-sm btn-outline" data-action="edit" data-id="${s.id}">✎ Izmeni</button>` : ""}
+        ${isAdmin ? `<button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 Lokacije</button>` : ""}
         <a class="btn btn-sm btn-outline" href="./admin-catalog.html?supplier=${s.id}">📦 Katalog</a>
-        <button class="btn btn-sm btn-danger" data-action="delete" data-id="${s.id}">Obriši</button>
+        ${isAdmin ? `<button class="btn btn-sm btn-danger" data-action="delete" data-id="${s.id}">Obriši</button>` : ""}
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   body.querySelectorAll("button[data-action=delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -82,7 +87,7 @@ document.getElementById("supplier-form").addEventListener("submit", async (e) =>
     await updateSupplier(companyId, activeEditId, data, actorName);
     toast("Dobavljač izmenjen.", "success");
   } else {
-    await addSupplier(companyId, { ...data, actorName });
+    await addSupplier(companyId, { ...data, actorName, createdBy: currentUid });
     toast("Dobavljač dodat.", "success");
   }
   supplierModal.classList.add("hidden");
@@ -90,6 +95,8 @@ document.getElementById("supplier-form").addEventListener("submit", async (e) =>
   activeEditId = null;
 });
 
+// Lokacije preuzimanja robe — admin-only (vidi firestore.rules), zato taj deo UI-a
+// učitavamo samo dugmetom koje se prikazuje isključivo adminu (render funkcija iznad).
 const locationModal = document.getElementById("location-modal");
 document.getElementById("close-location-modal").addEventListener("click", () => locationModal.classList.add("hidden"));
 

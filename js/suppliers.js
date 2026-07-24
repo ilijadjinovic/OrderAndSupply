@@ -10,11 +10,11 @@ const supLocationsCol = (companyId, supplierId) => collection(db, "companies", c
 export async function addSupplier(companyId, {
   name, contact = "", phone = "", email = "",
   pib = "", maticniBroj = "", address = "", bankAccount = "",
-  actorName,
+  actorName, createdBy,
 }) {
   const ref = await addDoc(suppliersCol(companyId), {
     name, contact, phone, email, pib, maticniBroj, address, bankAccount,
-    active: true, createdAt: serverTimestamp(),
+    active: true, createdAt: serverTimestamp(), createdBy: createdBy || null,
   });
   await logAudit(companyId, { action: "supplier_created", entity: "Suppliers", entityId: ref.id, actorName, details: name });
   return ref.id;
@@ -39,7 +39,7 @@ export function listenSuppliers(companyId, callback) {
   });
 }
 
-// --- Lokacije preuzimanja robe za dobavljača (SupLocations) ---
+// --- Lokacije preuzimanja robe za dobavljača (SupLocations) — admin-only, vidi firestore.rules ---
 export async function addSupplierLocation(companyId, supplierId, { name, address = "" }) {
   const ref = await addDoc(supLocationsCol(companyId, supplierId), { name, address, createdAt: serverTimestamp() });
   return ref.id;

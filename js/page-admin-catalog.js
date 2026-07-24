@@ -6,11 +6,18 @@ import { addCategory, deleteCategory, getCategories, addProduct, deleteProduct, 
 import { escapeHtml, toast, getParam, ROLES } from "./utils.js";
 
 await loadLang();
-let companyId, actorName, categories = [], unsubProducts = null;
+let companyId, actorName, currentUid, currentRole, categories = [], unsubProducts = null;
 
-requireAuth([ROLES.ADMIN], async (user, profile) => {
+requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], async (user, profile) => {
   companyId = profile.companyId; actorName = profile.name;
+  currentUid = user.uid; currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
+
+  // Kategorije su admin-only (vidi firestore.rules) — naručilac ne vidi taj tab.
+  if (currentRole !== ROLES.ADMIN) {
+    document.querySelector('.tab-btn[data-tab="categories"]')?.classList.add("hidden");
+    document.getElementById("tab-categories")?.classList.add("hidden");
+  }
 
   categories = await getCategories(companyId);
   renderCategories(categories);
@@ -32,6 +39,7 @@ function loadProducts(supplierId) {
 }
 
 function renderProducts(products, supplierId) {
+  const isAdmin = currentRole === ROLES.ADMIN;
   const body = document.getElementById("products-body");
   if (!products.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">Nema proizvoda za ovog dobavljača.</td></tr>`; return; }
   body.innerHTML = products.map((p) => {
@@ -43,7 +51,7 @@ function renderProducts(products, supplierId) {
       <td>${escapeHtml(catName)}</td>
       <td>${p.vatRate}%</td>
       <td>${p.minQuantity}</td>
-      <td><button class="btn btn-sm btn-danger" data-id="${p.id}" data-supplier="${supplierId}">Obriši</button></td>
+      <td>${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${p.id}" data-supplier="${supplierId}">Obriši</button>` : ""}</td>
     </tr>`;
   }).join("");
   body.querySelectorAll("button[data-id]").forEach((btn) => {
@@ -72,6 +80,7 @@ document.getElementById("product-form").addEventListener("submit", async (e) => 
     vatRate: Number(document.getElementById("p-vat").value) || 0,
     minQuantity: Number(document.getElementById("p-min").value) || 1,
     actorName,
+    createdBy: currentUid,
   });
   toast("Proizvod dodat.", "success");
   e.target.reset();

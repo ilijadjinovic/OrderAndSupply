@@ -24,6 +24,8 @@ const MENUS = {
     { href: "narucilac-dashboard.html", label: "dashboard", icon: "📊" },
     { href: "new-order.html", label: "new_order", icon: "➕" },
     { href: "templates.html", label: "templates", icon: "🗂️" },
+    { href: "admin-suppliers.html", label: "suppliers", icon: "🚚" },
+    { href: "admin-catalog.html", label: "catalog", icon: "📦" },
   ],
   isporucilac: [
     { href: "isporucilac-dashboard.html", label: "dashboard", icon: "📊" },

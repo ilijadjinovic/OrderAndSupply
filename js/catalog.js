@@ -7,7 +7,7 @@ import { logAudit } from "./audit.js";
 const categoriesCol = (companyId) => collection(db, "companies", companyId, "categories");
 const productsCol = (companyId, supplierId) => collection(db, "companies", companyId, "suppliers", supplierId, "products");
 
-// --- Kategorije (zajedničke za sve dobavljače) ---
+// --- Kategorije (zajedničke za sve dobavljače, admin-only — vidi firestore.rules) ---
 export async function addCategory(companyId, name) {
   const ref = await addDoc(categoriesCol(companyId), { name, createdAt: serverTimestamp() });
   return ref.id;
@@ -23,11 +23,11 @@ export async function getCategories(companyId) {
 // --- Proizvodi dobavljača (naziv, šifra, barkod, JM, kategorija, slika, PDV, min. količina) ---
 export async function addProduct(companyId, supplierId, {
   name, code = "", barcode = "", unit = "kom", categoryId = "", imageUrl = "",
-  vatRate = 20, minQuantity = 1, actorName,
+  vatRate = 20, minQuantity = 1, actorName, createdBy,
 }) {
   const ref = await addDoc(productsCol(companyId, supplierId), {
     name, code, barcode, unit, categoryId, imageUrl, vatRate, minQuantity,
-    active: true, createdAt: serverTimestamp(),
+    active: true, createdAt: serverTimestamp(), createdBy: createdBy || null,
   });
   await logAudit(companyId, { action: "product_created", entity: "SupProducts", entityId: ref.id, actorName, details: name });
   return ref.id;
