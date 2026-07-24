@@ -10,6 +10,7 @@ import {
 } from "./reports.js";
 import { exportCsv, exportExcel, exportPdf } from "./import-export.js";
 import { escapeHtml, toast, formatDate, ROLES, ORDER_STATUS_LABELS, badgeClassForStatus } from "./utils.js";
+import { getISO, setISO, initDatepickers } from "./datepicker.js";
 
 await loadLang();
 
@@ -41,8 +42,8 @@ function fmtAmount(n) {
 }
 
 async function runReport() {
-  const dateFromVal = document.getElementById("f-date-from").value;
-  const dateToVal = document.getElementById("f-date-to").value;
+  const dateFromVal = getISO(document.getElementById("f-date-from"));
+  const dateToVal = getISO(document.getElementById("f-date-to"));
   const dateFrom = dateFromVal ? new Date(dateFromVal + "T00:00:00") : null;
   const dateTo = dateToVal ? new Date(dateToVal + "T23:59:59") : null;
 
@@ -188,8 +189,8 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 
 document.getElementById("run-report-btn").addEventListener("click", runReport);
 document.getElementById("reset-filters-btn").addEventListener("click", () => {
-  document.getElementById("f-date-from").value = "";
-  document.getElementById("f-date-to").value = "";
+  setISO(document.getElementById("f-date-from"), "");
+  setISO(document.getElementById("f-date-to"), "");
   document.getElementById("f-narucilac").value = "";
   document.getElementById("f-isporucilac").value = "";
   document.getElementById("f-supplier").value = "";

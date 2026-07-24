@@ -53,7 +53,7 @@ function renderChart(orders) {
   document.getElementById("chart-orders").innerHTML = days.map((d, i) => `
     <div title="${d.toLocaleDateString("sr-RS")}: ${counts[i]}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;">
       <div style="width:70%;background:var(--brand-500);border-radius:4px 4px 0 0;height:${(counts[i] / max) * 100}%;min-height:2px;"></div>
-      <span style="font-size:9px;color:var(--ink-300);margin-top:4px;">${d.getDate()}/${d.getMonth() + 1}</span>
+      <span style="font-size:9px;color:var(--ink-300);margin-top:4px;">${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.</span>
     </div>
   `).join("");
 }

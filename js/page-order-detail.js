@@ -18,6 +18,7 @@ import {
   formatDate, escapeHtml, toast, getParam, badgeClassForStatus,
   ORDER_STATUS, ORDER_STATUS_LABELS, ORDER_STATUS_FLOW,
 } from "./utils.js";
+import { getISO, initDatepickers } from "./datepicker.js";
 
 await loadLang();
 
@@ -216,13 +217,15 @@ function renderPurchasesPanel() {
         <div class="form-row payment-form" data-purchase="${p.id}" style="margin-top:12px;align-items:end;">
           <div class="field"><label>Plaćeni iznos (${companyCurrency()})</label><input type="number" step="0.01" min="0" class="pay-amount" value="${p.paidAmount ?? ""}" placeholder="0.00" ${canEditFinance ? "" : "disabled"} /></div>
           <div class="field"><label>Broj računa</label><input type="text" class="pay-receipt-number" value="${escapeHtml(p.receiptNumber || "")}" ${canEditFinance ? "" : "disabled"} /></div>
-          <div class="field"><label>Datum računa</label><input type="date" class="pay-receipt-date" value="${escapeHtml(p.receiptDate || "")}" ${canEditFinance ? "" : "disabled"} /></div>
+          <div class="field"><label>Datum računa</label><input type="text" class="js-datepicker pay-receipt-date" data-value="${escapeHtml(p.receiptDate || "")}" ${canEditFinance ? "" : "disabled"} /></div>
           ${canEditFinance ? `<button type="button" class="btn btn-sm btn-primary" data-save-payment="${p.id}">💾 Sačuvaj</button>` : ""}
         </div>
         ${!canEditFinance && (p.paidAmount || p.receiptNumber) ? `<p class="muted" style="margin-top:4px;">Plaćeno: <strong>${formatCurrency(p.paidAmount)}</strong>${p.receiptNumber ? ` · Račun br. ${escapeHtml(p.receiptNumber)}` : ""}${p.receiptDate ? ` od ${formatDateShort2(p.receiptDate)}` : ""}</p>` : ""}
       </div>
     `;
   }).join("");
+
+  initDatepickers(panel);
 
   panel.querySelectorAll("button[data-start-purchase]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -250,7 +253,7 @@ function renderPurchasesPanel() {
       const row = panel.querySelector(`.payment-form[data-purchase="${btn.dataset.savePayment}"]`);
       const paidAmount = Number(row.querySelector(".pay-amount").value) || 0;
       const receiptNumber = row.querySelector(".pay-receipt-number").value.trim();
-      const receiptDate = row.querySelector(".pay-receipt-date").value;
+      const receiptDate = getISO(row.querySelector(".pay-receipt-date"));
       await setPurchasePayment(companyId, orderId, btn.dataset.savePayment, { paidAmount, receiptNumber, receiptDate }, profile.name);
       toast("Finansijski podaci sačuvani.", "success");
     });
