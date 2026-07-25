@@ -1,6 +1,6 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { listenLocations, addLocation, deleteLocation } from "./locations.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
 
@@ -15,19 +15,19 @@ requireAuth([ROLES.ADMIN], (user, profile) => {
 
 function render(locations) {
   const body = document.getElementById("loc-body");
-  if (!locations.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">Nema lokacija.</td></tr>`; return; }
+  if (!locations.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">${t("no_locations")}</td></tr>`; return; }
   body.innerHTML = locations.map((l) => `
     <tr>
       <td><strong>${escapeHtml(l.name)}</strong></td>
       <td>${escapeHtml(l.address || "—")}</td>
-      <td><button class="btn btn-sm btn-danger" data-id="${l.id}">Obriši</button></td>
+      <td><button class="btn btn-sm btn-danger" data-id="${l.id}">${t("delete")}</button></td>
     </tr>
   `).join("");
   body.querySelectorAll("button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Obrisati lokaciju?")) return;
+      if (!confirm(t("confirm_delete_location"))) return;
       await deleteLocation(companyId, btn.dataset.id);
-      toast("Lokacija obrisana.", "success");
+      toast(t("toast_location_deleted"), "success");
     });
   });
 }
@@ -35,6 +35,6 @@ function render(locations) {
 document.getElementById("loc-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   await addLocation(companyId, { name: document.getElementById("loc-name").value.trim(), address: document.getElementById("loc-address").value.trim(), actorName });
-  toast("Lokacija dodata.", "success");
+  toast(t("toast_location_added"), "success");
   e.target.reset();
 });

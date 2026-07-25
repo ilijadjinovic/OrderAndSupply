@@ -1,6 +1,6 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { getCompanySettings, updateCompanySettings } from "./settings.js";
 import { toast, ROLES } from "./utils.js";
 
@@ -37,5 +37,5 @@ document.getElementById("settings-form").addEventListener("submit", async (e) =>
     assignmentMode: document.getElementById("s-assignment").value,
     gpsTrackingEnabled: document.getElementById("s-gps").checked,
   }, actorName);
-  toast("Podešavanja sačuvana.", "success");
+  toast(t("toast_settings_saved"), "success");
 });

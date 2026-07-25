@@ -16,7 +16,7 @@ export async function openClaim(companyId, orderId, { itemName, requestedQty, re
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.REKLAMACIJA, updatedAt: serverTimestamp() });
   await logAudit(companyId, { action: "claim_opened", entity: "Orders", entityId: orderId, actorUid, actorName, details: itemName });
   if (notifyUid) {
-    await createNotification(companyId, { toUid: notifyUid, event: NOTIF_EVENTS.REKLAMACIJA_OTVORENA, orderId, title: "Nova reklamacija", body: `${actorName}: ${itemName}` });
+    await createNotification(companyId, { toUid: notifyUid, event: NOTIF_EVENTS.REKLAMACIJA_OTVORENA, orderId, titleKey: "notif_claim_opened_title", bodyParams: { name: actorName, item: itemName }, bodyKey: "notif_claim_opened_body" });
   }
   return ref.id;
 }

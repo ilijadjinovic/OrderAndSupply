@@ -12,8 +12,14 @@ export async function loadLang(lang = currentLang) {
   applyTranslations();
 }
 
-export function t(key) {
-  return dict[key] || key;
+export function t(key, params = null) {
+  let str = dict[key] || key;
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      str = str.replaceAll(`{${k}}`, v);
+    });
+  }
+  return str;
 }
 
 export function applyTranslations(root = document) {
@@ -23,6 +29,9 @@ export function applyTranslations(root = document) {
   });
   root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+  });
+  root.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
   });
 }
 

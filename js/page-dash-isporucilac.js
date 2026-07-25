@@ -1,8 +1,8 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { listenAssignedOrders } from "./orders.js";
-import { formatDate, escapeHtml, badgeClassForStatus, ORDER_STATUS_LABELS, ROLES } from "./utils.js";
+import { formatDate, escapeHtml, badgeClassForStatus, statusLabel, ROLES } from "./utils.js";
 
 await loadLang();
 
@@ -24,20 +24,20 @@ function renderStats(orders) {
   document.getElementById("stat-cards").innerHTML = `
     <div class="stat-card"><div class="stat-label" data-i18n="my_deliveries">Moje isporuke</div><div class="stat-value">${inProgress}</div></div>
     <div class="stat-card red"><div class="stat-label" data-i18n="late">Kasne</div><div class="stat-value">${late}</div></div>
-    <div class="stat-card amber"><div class="stat-label">U toku</div><div class="stat-value">${inPurchase}</div></div>
+    <div class="stat-card amber"><div class="stat-label" data-i18n="in_purchase">${t("in_purchase")}</div><div class="stat-value">${inPurchase}</div></div>
     <div class="stat-card teal"><div class="stat-label" data-i18n="finished_today">Danas završeno</div><div class="stat-value">${finishedToday}</div></div>
   `;
 }
 
 function renderTable(orders) {
   const body = document.getElementById("orders-body");
-  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">Nemate dodeljenih narudžbina.</td></tr>`; return; }
+  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">${t("no_assigned_orders")}</td></tr>`; return; }
   body.innerHTML = orders.map((o) => `
     <tr class="row-link" data-id="${o.id}">
       <td class="mono">${o.orderNumber}</td>
       <td>${escapeHtml(o.createdByName || "—")}</td>
-      <td>${o.priority === "hitno" ? '<span class="badge badge-urgent">Hitno</span>' : '<span class="badge badge-gray">Standardno</span>'}</td>
-      <td><span class="badge ${badgeClassForStatus(o.status)}">${ORDER_STATUS_LABELS[o.status] || o.status}</span></td>
+      <td>${o.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`}</td>
+      <td><span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span></td>
       <td>${formatDate(o.createdAt)}</td>
     </tr>
   `).join("");

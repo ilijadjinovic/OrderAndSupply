@@ -20,7 +20,8 @@ export async function sendMessageAndNotify(companyId, orderId, { fromUid, fromNa
   if (toUid) {
     await createNotification(companyId, {
       toUid, event: NOTIF_EVENTS.NOVA_PORUKA, orderId,
-      title: `Nova poruka od ${fromName}`, body: text.slice(0, 120),
+      titleKey: "notif_new_message_title", bodyParams: { name: fromName },
+      body: text.slice(0, 120),
     });
   }
 }

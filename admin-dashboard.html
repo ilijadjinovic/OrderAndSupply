@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Dashboard — Admin firme — Order &amp; Supply</title>
+<title data-i18n="page_title_admin_dashboard">Dashboard — Admin firme — Order &amp; Supply</title>
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
 <link rel="apple-touch-icon" href="./assets/icon-192.png" />
@@ -19,23 +19,23 @@
         <div class="eyebrow" id="company-name-eyebrow">Firma</div>
         <h1 data-i18n="dashboard">Kontrolna tabla</h1>
       </div>
-      <a class="btn btn-amber" href="./admin-users.html">+ Novi korisnik</a>
+      <a class="btn btn-amber" href="./admin-users.html" data-i18n="new_user_btn">+ Novi korisnik</a>
     </div>
 
     <div class="stat-grid" id="stat-cards"></div>
 
     <div class="panel">
-      <div class="panel-head"><h2>Broj narudžbina kroz vreme (poslednjih 14 dana)</h2></div>
+      <div class="panel-head"><h2 data-i18n="orders_over_time_title">Broj narudžbina kroz vreme (poslednjih 14 dana)</h2></div>
       <div id="chart-orders" style="display:flex;align-items:flex-end;gap:6px;height:140px;"></div>
     </div>
 
     <div class="form-row">
       <div class="panel">
-        <h3>Prosečno vreme obrade narudžbine</h3>
+        <h3 data-i18n="avg_processing_time_title">Prosečno vreme obrade narudžbine</h3>
         <div class="stat-value" id="avg-processing-time" style="font-family:var(--font-display);font-size:30px;font-weight:800;">—</div>
       </div>
       <div class="panel">
-        <h3>Procenat uspešne nabavke / broj reklamacija</h3>
+        <h3 data-i18n="success_rate_title">Procenat uspešne nabavke / broj reklamacija</h3>
         <div id="success-rate" style="font-family:var(--font-display);font-size:30px;font-weight:800;">—</div>
       </div>
     </div>
@@ -43,12 +43,12 @@
     <div class="panel">
       <div class="panel-head">
         <h2 data-i18n="orders">Narudžbine</h2>
-        <input type="text" id="order-search" placeholder="Pretraga po broju narudžbine..." style="max-width:260px;" />
+        <input type="text" id="order-search" data-i18n-placeholder="search_order_number_placeholder" placeholder="Pretraga po broju narudžbine..." style="max-width:260px;" />
       </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Broj</th><th>Naručilac</th><th>Isporučilac</th><th>Prioritet</th><th>Status</th><th>Kreirana</th></tr></thead>
-          <tbody id="orders-body"><tr class="empty-row"><td colspan="6">Učitavanje...</td></tr></tbody>
+          <thead><tr><th data-i18n="export_col_number">Broj</th><th data-i18n="role_narucilac">Naručilac</th><th data-i18n="role_isporucilac">Isporučilac</th><th data-i18n="priority">Prioritet</th><th data-i18n="status">Status</th><th data-i18n="created_label">Kreirana</th></tr></thead>
+          <tbody id="orders-body"><tr class="empty-row"><td colspan="6" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>

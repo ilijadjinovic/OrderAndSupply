@@ -4,6 +4,7 @@
 // Izvoz: PDF, Excel, CSV
 // Koristi lagane CDN biblioteke (PapaParse, SheetJS, jsPDF) — bez build alata.
 // ============================================================================
+import { t } from "./i18n.js";
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -109,7 +110,7 @@ function drawPageNumbers(pdf) {
     pdf.setFont(REPORT_FONT, "normal");
     pdf.setFontSize(8);
     pdf.setTextColor(150);
-    pdf.text(`Strana ${p}/${pageCount}`, M + PW, PH + 10, { align: "right" });
+    pdf.text(`${t("pdf_page_label")} ${p}/${pageCount}`, M + PW, PH + 10, { align: "right" });
   }
 }
 
@@ -172,7 +173,7 @@ export async function exportPdf(filename, title, rows) {
     pdf.setFont(REPORT_FONT, "normal");
     pdf.setFontSize(10);
     pdf.setTextColor(120);
-    pdf.text("Nema podataka za prikaz.", M, y);
+    pdf.text(t("no_data"), M, y);
     drawPageNumbers(pdf);
     pdf.save(`${filename}.pdf`);
     return;

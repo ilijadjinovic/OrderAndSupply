@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lokacije firme — Order &amp; Supply</title>
+<title data-i18n="page_title_locations">Lokacije firme — Order &amp; Supply</title>
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
 <link rel="apple-touch-icon" href="./assets/icon-192.png" />
@@ -15,23 +15,23 @@
   <div id="app-nav"></div>
   <main class="content">
     <div class="page-header">
-      <div><div class="eyebrow">Admin firme</div><h1 data-i18n="locations">Lokacije</h1></div>
+      <div><div class="eyebrow" data-i18n="role_admin">Admin firme</div><h1 data-i18n="locations">Lokacije</h1></div>
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h2>Dodaj lokaciju</h2></div>
+      <div class="panel-head"><h2 data-i18n="add_location_title">Dodaj lokaciju</h2></div>
       <form id="loc-form" class="form-row" style="align-items:end;">
-        <div class="field"><label>Naziv (npr. Magacin Novi Beograd)</label><input type="text" id="loc-name" required /></div>
-        <div class="field"><label>Adresa</label><input type="text" id="loc-address" /></div>
-        <button type="submit" class="btn btn-amber" style="height:42px;">+ Dodaj</button>
+        <div class="field"><label data-i18n="location_name_hint">Naziv (npr. Magacin Novi Beograd)</label><input type="text" id="loc-name" required /></div>
+        <div class="field"><label data-i18n="address_label">Adresa</label><input type="text" id="loc-address" /></div>
+        <button type="submit" class="btn btn-amber" style="height:42px;" data-i18n="add_plus_btn">+ Dodaj</button>
       </form>
     </div>
 
     <div class="panel">
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Naziv</th><th>Adresa</th><th></th></tr></thead>
-          <tbody id="loc-body"><tr class="empty-row"><td colspan="3">Učitavanje...</td></tr></tbody>
+          <thead><tr><th data-i18n="name">Naziv</th><th data-i18n="address_label">Adresa</th><th></th></tr></thead>
+          <tbody id="loc-body"><tr class="empty-row"><td colspan="3" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>

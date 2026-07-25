@@ -15,6 +15,7 @@
 // ============================================================================
 import { formatDate } from "./utils.js";
 import { getSupplierLocations } from "./suppliers.js";
+import { t, currentLang } from "./i18n.js";
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -65,18 +66,20 @@ function drawPageNumbers(pdf) {
     pdf.setFont(REPORT_FONT, "normal");
     pdf.setFontSize(8);
     pdf.setTextColor(150);
-    pdf.text(`Strana ${p}/${pageCount}`, M + PW, PH + 10, { align: "right" });
+    pdf.text(`${t("pdf_page_label")} ${p}/${pageCount}`, M + PW, PH + 10, { align: "right" });
   }
 }
 
 function fmtAmount(n, currency) {
-  return `${(Number(n) || 0).toLocaleString("sr-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+  const locale = currentLang === "en" ? "en-GB" : "sr-RS";
+  return `${(Number(n) || 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 function fmtIsoDate(isoStr) {
   if (!isoStr) return "—";
   const d = new Date(isoStr + "T00:00:00");
   if (isNaN(d)) return String(isoStr);
-  return d.toLocaleDateString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const locale = currentLang === "en" ? "en-GB" : "sr-RS";
+  return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 // ── GENERIČKA TABELA (cols: [label, width, align?]) ────────────
@@ -134,20 +137,20 @@ function drawCompanyHeader(pdf, company) {
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setFontSize(16);
   pdf.setTextColor(26, 29, 33);
-  pdf.text(company?.name || "Firma", M, y);
+  pdf.text(company?.name || t("company_generic"), M, y);
   y += 6;
 
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setFontSize(9);
   pdf.setTextColor(85);
   const lines = [];
-  if (company?.address) lines.push(`Adresa: ${company.address}`);
+  if (company?.address) lines.push(`${t("address_label")}: ${company.address}`);
   const pibLine = [
-    company?.pib ? `PIB: ${company.pib}` : null,
-    company?.maticniBroj ? `Matični broj: ${company.maticniBroj}` : null,
+    company?.pib ? `${t("pib_label")}: ${company.pib}` : null,
+    company?.maticniBroj ? `${t("company_id_label")}: ${company.maticniBroj}` : null,
   ].filter(Boolean).join("   ·   ");
   if (pibLine) lines.push(pibLine);
-  if (company?.phone) lines.push(`Telefon: ${company.phone}`);
+  if (company?.phone) lines.push(`${t("phone_label")}: ${company.phone}`);
   lines.forEach((line) => { pdf.text(line, M, y); y += 4.5; });
 
   y += 2;
@@ -162,13 +165,13 @@ function drawOrderTitle(pdf, order, y) {
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setFontSize(14);
   pdf.setTextColor(26, 29, 33);
-  pdf.text(`NARUDŽBENICA br. ${order.orderNumber}`, M, y);
+  pdf.text(`${t("order_form_title")} ${order.orderNumber}`, M, y);
 
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setFontSize(9);
   pdf.setTextColor(85);
-  pdf.text(`Datum kreiranja: ${formatDate(order.createdAt)}`, M + PW, y - 4, { align: "right" });
-  pdf.text(`Prioritet: ${order.priority === "hitno" ? "Hitno" : "Standardno"}`, M + PW, y, { align: "right" });
+  pdf.text(`${t("created_date_label")}: ${formatDate(order.createdAt)}`, M + PW, y - 4, { align: "right" });
+  pdf.text(`${t("priority")}: ${order.priority === "hitno" ? t("urgent") : t("standard")}`, M + PW, y, { align: "right" });
 
   return y + 9;
 }
@@ -179,8 +182,8 @@ function drawOrderMeta(pdf, order, deliveryLocations, y) {
 
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setTextColor(85);
-  pdf.text("Naručilac:", M, y);
-  pdf.text("Isporučilac:", M + 95, y);
+  pdf.text(`${t("role_narucilac")}:`, M, y);
+  pdf.text(`${t("role_isporucilac")}:`, M + 95, y);
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setTextColor(30);
   pdf.text(order.createdByName || "—", M + 26, y);
@@ -189,7 +192,7 @@ function drawOrderMeta(pdf, order, deliveryLocations, y) {
 
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setTextColor(85);
-  pdf.text("Lokacije isporuke:", M, y);
+  pdf.text(`${t("delivery_locations_title")}:`, M, y);
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setTextColor(30);
   const locText = (deliveryLocations || []).map((l) => l.locationName).join(", ") || "—";
@@ -208,7 +211,7 @@ function drawSupplierSection(pdf, group, y, pickupAddressMap) {
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setFontSize(10.5);
   pdf.setTextColor(26, 29, 33);
-  pdf.text(`Dobavljač: ${group.name}`, M + 2, y);
+  pdf.text(`${t("supplier")}: ${group.name}`, M + 2, y);
   y += 9;
 
   // Grupisanje stavki po lokaciji preuzimanja (redosled po prvom pojavljivanju)
@@ -219,7 +222,7 @@ function drawSupplierSection(pdf, group, y, pickupAddressMap) {
     if (!(key in locIndex)) {
       locIndex[key] = locGroups.length;
       locGroups.push({
-        name: key === "any" ? "Bilo koja lokacija" : (it.pickupLocationName || "Lokacija"),
+        name: key === "any" ? t("any_location") : (it.pickupLocationName || t("location")),
         address: key === "any" ? "" : (pickupAddressMap[key] || ""),
         items: [],
       });
@@ -228,10 +231,10 @@ function drawSupplierSection(pdf, group, y, pickupAddressMap) {
   });
 
   const cols = [
-    ["Proizvod", 66],
-    ["Količina", 22],
-    ["Lokacija isporuke", 46],
-    ["Napomena", 46],
+    [t("product_label"), 66],
+    [t("quantity"), 22],
+    [t("delivery_location_label"), 46],
+    [t("note"), 46],
   ];
 
   locGroups.forEach((g) => {
@@ -239,7 +242,7 @@ function drawSupplierSection(pdf, group, y, pickupAddressMap) {
     pdf.setFont(REPORT_FONT, "bold");
     pdf.setFontSize(9);
     pdf.setTextColor(60);
-    const locLabel = g.address ? `Lokacija preuzimanja: ${g.name} — ${g.address}` : `Lokacija preuzimanja: ${g.name}`;
+    const locLabel = g.address ? `${t("pickup_location_label")}: ${g.name} — ${g.address}` : `${t("pickup_location_label")}: ${g.name}`;
     pdf.text(locLabel, M + 2, y);
     y += 5;
 
@@ -264,14 +267,14 @@ function drawFinanceSection(pdf, purchases, currency, total, y) {
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setFontSize(10.5);
   pdf.setTextColor(26, 29, 33);
-  pdf.text("Finansijski pregled", M, y);
+  pdf.text(t("finance_overview_title"), M, y);
   y += 6;
 
   const cols = [
-    ["Dobavljač", 55],
-    ["Broj računa", 45],
-    ["Datum računa", 35],
-    ["Iznos", 45, "right"],
+    [t("supplier"), 55],
+    [t("receipt_number_label"), 45],
+    [t("receipt_date_label"), 35],
+    [t("amount_label"), 45, "right"],
   ];
   y = drawTableHeader(pdf, cols, y);
   purchases.filter((p) => p.paidAmount).forEach((p, i) => {
@@ -290,7 +293,7 @@ function drawFinanceSection(pdf, purchases, currency, total, y) {
   pdf.setFont(REPORT_FONT, "bold");
   pdf.setFontSize(9.5);
   pdf.setTextColor(26, 29, 33);
-  pdf.text("UKUPNO ZA NARUDŽBINU:", M + PW - 47, y, { align: "right" });
+  pdf.text(t("order_total_label_caps"), M + PW - 47, y, { align: "right" });
   pdf.text(fmtAmount(total, currency), M + PW, y, { align: "right" });
 
   return y + 9;
@@ -307,16 +310,16 @@ function drawApproval(pdf, y) {
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setFontSize(9.5);
   pdf.setTextColor(30);
-  pdf.text("☐  Narudžbina je realizovana i po istoj je postupljeno u celosti.", M, y);
+  pdf.text(`☐  ${t("approval_statement")}`, M, y);
   y += 7;
-  pdf.text("Datum overe: ______________________", M, y);
+  pdf.text(`${t("approval_date_label")}: ______________________`, M, y);
   return y + 14;
 }
 
 function drawSignatures(pdf, y) {
   y = checkPageBreak(pdf, y, 24);
   const colW = PW / 3;
-  const labels = ["Naručilac", "Isporučilac", "Overio (rukovodilac)"];
+  const labels = [t("role_narucilac"), t("role_isporucilac"), t("approved_by_label")];
   labels.forEach((label, i) => {
     const x = M + i * colW;
     pdf.setDrawColor(26, 29, 33);
@@ -328,18 +331,19 @@ function drawSignatures(pdf, y) {
     pdf.text(label, x, y + 4.5);
     pdf.setTextColor(85);
     pdf.setFontSize(8);
-    pdf.text("Datum: ______________", x, y + 10);
+    pdf.text(`${t("date_label")}: ______________`, x, y + 10);
   });
   return y + 18;
 }
 
 function drawFooter(pdf, y) {
   y = checkPageBreak(pdf, y, 6);
-  const generatedAt = new Date().toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const locale = currentLang === "en" ? "en-GB" : "sr-RS";
+  const generatedAt = new Date().toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setFontSize(7.5);
   pdf.setTextColor(150);
-  pdf.text(`Dokument generisan iz sistema za naručivanje i nabavku — ${generatedAt}`, M, y);
+  pdf.text(`${t("pdf_generated_footer")} — ${generatedAt}`, M, y);
 }
 
 // company: dokument firme (name, address, pib, maticniBroj, phone, currency)
@@ -380,5 +384,5 @@ export async function generateOrderPdf({ company, order, items, purchases = [], 
   drawFooter(pdf, y);
   drawPageNumbers(pdf);
 
-  pdf.save(`Narudzbenica-${order.orderNumber}.pdf`);
+  pdf.save(`${t("order_form_filename_prefix")}-${order.orderNumber}.pdf`);
 }

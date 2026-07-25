@@ -1,8 +1,8 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { listenCompanyUsers, createCompanyUser, updateCompanyUser } from "./users.js";
-import { escapeHtml, toast, ROLES, ROLE_LABELS } from "./utils.js";
+import { escapeHtml, toast, ROLES, roleLabel } from "./utils.js";
 
 await loadLang();
 let companyId, currentName;
@@ -16,21 +16,21 @@ requireAuth([ROLES.ADMIN], (user, profile) => {
 
 function renderUsers(users) {
   const body = document.getElementById("users-body");
-  if (!users.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">Nema korisnika.</td></tr>`; return; }
+  if (!users.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">${t("no_users")}</td></tr>`; return; }
   body.innerHTML = users.map((u) => `
     <tr>
       <td><strong>${escapeHtml(u.name)}</strong></td>
       <td>${escapeHtml(u.email)}</td>
-      <td><span class="badge badge-blue">${ROLE_LABELS[u.role] || u.role}</span></td>
-      <td>${u.active === false ? '<span class="badge badge-red">Neaktivan</span>' : '<span class="badge badge-teal">Aktivan</span>'}</td>
-      <td><button class="btn btn-sm btn-outline" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? "Aktiviraj" : "Deaktiviraj"}</button></td>
+      <td><span class="badge badge-blue">${roleLabel(u.role)}</span></td>
+      <td>${u.active === false ? `<span class="badge badge-red">${t("inactive")}</span>` : `<span class="badge badge-teal">${t("active")}</span>`}</td>
+      <td><button class="btn btn-sm btn-outline" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? t("activate") : t("deactivate")}</button></td>
     </tr>
   `).join("");
 
   body.querySelectorAll("button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await updateCompanyUser(companyId, btn.dataset.id, { active: btn.dataset.active !== "true" });
-      toast("Status korisnika je ažuriran.", "success");
+      toast(t("toast_user_status_updated"), "success");
     });
   });
 }
@@ -51,12 +51,12 @@ document.getElementById("user-form").addEventListener("submit", async (e) => {
       role: document.getElementById("u-role").value,
       actorName: currentName,
     });
-    toast("Korisnik je kreiran.", "success");
+    toast(t("toast_user_created"), "success");
     modal.classList.add("hidden");
     e.target.reset();
   } catch (err) {
     console.error(err);
-    toast(err.message || "Greška pri kreiranju korisnika.", "error");
+    toast(err.message || t("toast_user_create_error"), "error");
   } finally {
     btn.disabled = false;
   }

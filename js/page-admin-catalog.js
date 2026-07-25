@@ -1,6 +1,6 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { getSuppliers } from "./suppliers.js";
 import { addCategory, deleteCategory, getCategories, addProduct, deleteProduct, listenProducts } from "./catalog.js";
 import { escapeHtml, toast, getParam, ROLES } from "./utils.js";
@@ -41,7 +41,7 @@ function loadProducts(supplierId) {
 function renderProducts(products, supplierId) {
   const isAdmin = currentRole === ROLES.ADMIN;
   const body = document.getElementById("products-body");
-  if (!products.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">Nema proizvoda za ovog dobavljača.</td></tr>`; return; }
+  if (!products.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_products_for_supplier")}</td></tr>`; return; }
   body.innerHTML = products.map((p) => {
     const catName = categories.find((c) => c.id === p.categoryId)?.name || "—";
     return `<tr>
@@ -51,25 +51,25 @@ function renderProducts(products, supplierId) {
       <td>${escapeHtml(catName)}</td>
       <td>${p.vatRate}%</td>
       <td>${p.minQuantity}</td>
-      <td>${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${p.id}" data-supplier="${supplierId}">Obriši</button>` : ""}</td>
+      <td>${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${p.id}" data-supplier="${supplierId}">${t("delete")}</button>` : ""}</td>
     </tr>`;
   }).join("");
   body.querySelectorAll("button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await deleteProduct(companyId, btn.dataset.supplier, btn.dataset.id);
-      toast("Proizvod obrisan.", "success");
+      toast(t("toast_product_deleted"), "success");
     });
   });
 }
 
 function fillCategorySelect() {
-  document.getElementById("p-category").innerHTML = categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") || `<option value="">Bez kategorije</option>`;
+  document.getElementById("p-category").innerHTML = categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") || `<option value="">${t("no_category")}</option>`;
 }
 
 document.getElementById("product-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const supplierId = document.getElementById("supplier-select").value;
-  if (!supplierId) { toast("Prvo izaberite dobavljača.", "error"); return; }
+  if (!supplierId) { toast(t("toast_select_supplier_first"), "error"); return; }
   const lastCategory = document.getElementById("p-category").value; // zapamti izabranu kategoriju
   await addProduct(companyId, supplierId, {
     name: document.getElementById("p-name").value.trim(),
@@ -82,7 +82,7 @@ document.getElementById("product-form").addEventListener("submit", async (e) => 
     actorName,
     createdBy: currentUid,
   });
-  toast("Proizvod dodat.", "success");
+  toast(t("toast_product_added"), "success");
   e.target.reset();
   document.getElementById("p-unit").value = "kom";
   document.getElementById("p-vat").value = 20;
@@ -92,8 +92,8 @@ document.getElementById("product-form").addEventListener("submit", async (e) => 
 
 function renderCategories(cats) {
   document.getElementById("categories-body").innerHTML = cats.length
-    ? cats.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td><button class="btn btn-sm btn-danger" data-id="${c.id}">Obriši</button></td></tr>`).join("")
-    : `<tr class="empty-row"><td colspan="2">Nema kategorija.</td></tr>`;
+    ? cats.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td><button class="btn btn-sm btn-danger" data-id="${c.id}">${t("delete")}</button></td></tr>`).join("")
+    : `<tr class="empty-row"><td colspan="2">${t("no_categories")}</td></tr>`;
   document.querySelectorAll("#categories-body button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await deleteCategory(companyId, btn.dataset.id);

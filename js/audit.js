@@ -5,7 +5,10 @@ import { db, collection, addDoc, query, orderBy, limit, getDocs, serverTimestamp
 
 // action primeri: order_created, order_accepted, order_rejected, order_status_changed,
 // item_purchased, claim_opened, claim_closed, user_created, supplier_created, ...
-export async function logAudit(companyId, { action, entity, entityId, actorUid = null, actorName = "Sistem", details = "" }) {
+// Napomena: actorName ostaje null kad nije prosleđen — prikaz "sistemske" akcije
+// se prevodi u trenutku prikaza (page-master-admin.js), ne u trenutku upisa,
+// da bi poštovao jezik onoga ko GLEDA log, ne onoga ko je akciju izazvao.
+export async function logAudit(companyId, { action, entity, entityId, actorUid = null, actorName = null, details = "" }) {
   try {
     await addDoc(collection(db, "companies", companyId, "auditLogs"), {
       action, entity, entityId, actorUid, actorName, details,

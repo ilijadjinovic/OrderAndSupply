@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Dashboard — Isporučilac — Order &amp; Supply</title>
+<title data-i18n="page_title_isporucilac_dashboard">Dashboard — Isporučilac — Order &amp; Supply</title>
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
 <link rel="apple-touch-icon" href="./assets/icon-192.png" />
@@ -15,7 +15,7 @@
   <div id="app-nav"></div>
   <main class="content">
     <div class="page-header">
-      <div><div class="eyebrow">Isporučilac</div><h1 data-i18n="dashboard">Kontrolna tabla</h1></div>
+      <div><div class="eyebrow" data-i18n="role_isporucilac">Isporučilac</div><h1 data-i18n="dashboard">Kontrolna tabla</h1></div>
     </div>
 
     <div class="stat-grid" id="stat-cards"></div>
@@ -24,8 +24,8 @@
       <div class="panel-head"><h2 data-i18n="my_deliveries">Moje isporuke</h2></div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Broj</th><th>Naručilac</th><th>Prioritet</th><th>Status</th><th>Kreirana</th></tr></thead>
-          <tbody id="orders-body"><tr class="empty-row"><td colspan="5">Učitavanje...</td></tr></tbody>
+          <thead><tr><th data-i18n="export_col_number">Broj</th><th data-i18n="role_narucilac">Naručilac</th><th data-i18n="priority">Prioritet</th><th data-i18n="status">Status</th><th data-i18n="created_label">Kreirana</th></tr></thead>
+          <tbody id="orders-body"><tr class="empty-row"><td colspan="5" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>

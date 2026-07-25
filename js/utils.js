@@ -1,6 +1,7 @@
 // ============================================================================
 // UTILS — zajedničke pomoćne funkcije i konstante (vidi Poglavlje 2 i 3 spec.)
 // ============================================================================
+import { t, currentLang } from "./i18n.js";
 
 export const ROLES = {
   MASTER_ADMIN: "master_admin",
@@ -9,12 +10,19 @@ export const ROLES = {
   ISPORUCILAC: "isporucilac",
 };
 
-export const ROLE_LABELS = {
-  master_admin: "Master Admin",
-  admin: "Admin firme",
-  narucilac: "Naručilac",
-  isporucilac: "Isporučilac",
+// Ključevi prevoda za uloge (Poglavlje 13. — svi prikazani tekstovi idu kroz i18n)
+const ROLE_I18N_KEYS = {
+  master_admin: "role_master_admin",
+  admin: "role_admin",
+  narucilac: "role_narucilac",
+  isporucilac: "role_isporucilac",
 };
+
+// Napomena: ROLE_LABELS se više NE koristi kao statički objekat (bio bi zamrznut
+// na jeziku učitanom pri startu aplikacije). Umesto toga koristi roleLabel(role).
+export function roleLabel(role) {
+  return t(ROLE_I18N_KEYS[role]) || role;
+}
 
 // Statusi narudžbine — Poglavlje 3
 export const ORDER_STATUS = {
@@ -31,19 +39,28 @@ export const ORDER_STATUS = {
   ODBIJENA: "odbijena",
 };
 
-export const ORDER_STATUS_LABELS = {
-  kreirana: "Kreirana",
-  ceka_prihvatanje: "Čeka prihvatanje",
-  prihvacena: "Prihvaćena",
-  u_nabavci: "U nabavci",
-  zavrsena_nabavka: "Završena nabavka",
-  u_isporuci: "U isporuci",
-  isporucena: "Isporučena",
-  potvrdjen_prijem: "Potvrđen prijem",
-  reklamacija: "Reklamacija",
-  zatvorena: "Zatvorena",
-  odbijena: "Odbijena",
+const ORDER_STATUS_I18N_KEYS = {
+  kreirana: "status_kreirana",
+  ceka_prihvatanje: "status_ceka_prihvatanje",
+  prihvacena: "status_prihvacena",
+  u_nabavci: "in_purchase",
+  zavrsena_nabavka: "status_zavrsena_nabavka",
+  u_isporuci: "status_u_isporuci",
+  isporucena: "status_isporucena",
+  potvrdjen_prijem: "status_potvrdjen_prijem",
+  reklamacija: "status_reklamacija",
+  zatvorena: "status_zatvorena",
+  odbijena: "status_odbijena",
 };
+
+// Napomena: ORDER_STATUS_LABELS je uklonjen kao statički objekat iz istog razloga
+// kao ROLE_LABELS. Koristi statusLabel(status) da uvek dobiješ prevod za trenutni jezik.
+export function statusLabel(status) {
+  return t(ORDER_STATUS_I18N_KEYS[status]) || status;
+}
+
+// Za popunjavanje <select>/filtera svim statusima, redosledom definisanim gore.
+export const ORDER_STATUS_ALL = Object.keys(ORDER_STATUS_I18N_KEYS);
 
 // Redosled toka za progres-traku (Poglavlje 3)
 export const ORDER_STATUS_FLOW = [
@@ -67,13 +84,15 @@ export function uid(prefix = "id") {
 export function formatDate(ts) {
   if (!ts) return "—";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const locale = currentLang === "en" ? "en-GB" : "sr-RS";
+  return d.toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDateShort(ts) {
   if (!ts) return "—";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const locale = currentLang === "en" ? "en-GB" : "sr-RS";
+  return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export function toast(message, type = "info") {

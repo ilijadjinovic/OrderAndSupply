@@ -5,6 +5,7 @@
 // ============================================================================
 import { db, collection, getDocs, orderBy, query, limit } from "./firebase-init.js";
 import { getOrderItems, getOrderPurchases } from "./orders.js";
+import { t } from "./i18n.js";
 
 export async function getAllOrdersOnce(companyId, max = 500) {
   const q = query(collection(db, "companies", companyId, "orders"), orderBy("createdAt", "desc"), limit(max));
@@ -59,7 +60,7 @@ export function aggregateByNarucilac(rows) {
 
 // Po isporučiocima: broj narudžbina i ukupan iznos po dodeljenom isporučiocu
 export function aggregateByIsporucilac(rows) {
-  return aggregateByOrderField(rows, (r) => r.assignedToUid, (r) => r.assignedToName || "Nije dodeljen");
+  return aggregateByOrderField(rows, (r) => r.assignedToUid, (r) => r.assignedToName || t("not_assigned"));
 }
 
 function aggregateByOrderField(rows, keyFn, nameFn) {

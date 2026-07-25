@@ -5,7 +5,7 @@ import {
   db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot,
   orderBy, where, query, limit, serverTimestamp, writeBatch,
 } from "./firebase-init.js";
-import { ORDER_STATUS, ORDER_STATUS_LABELS, uid } from "./utils.js";
+import { ORDER_STATUS, statusLabel, uid } from "./utils.js";
 import { logAudit } from "./audit.js";
 import { createNotification, NOTIF_EVENTS } from "./notifications.js";
 import { getIsporucioci } from "./users.js";
@@ -96,7 +96,7 @@ export async function createOrder(companyId, {
   if (assignedToUid) {
     await createNotification(companyId, {
       toUid: assignedToUid, event: NOTIF_EVENTS.NOVA_NARUDZBINA, orderId: orderRef.id,
-      title: "Nova narudžbina dodeljena", body: "Sistem vam je automatski dodelio narudžbinu.",
+      titleKey: "notif_new_order_title", bodyKey: "notif_new_order_auto_body",
     });
   }
 
@@ -165,26 +165,26 @@ export async function assignOrder(companyId, orderId, { assignedToUid, assignedT
     assignedToUid, assignedToName, status: ORDER_STATUS.CEKA_PRIHVATANJE, updatedAt: serverTimestamp(),
   });
   await logAudit(companyId, { action: "order_assigned", entity: "Orders", entityId: orderId, actorName, details: assignedToName });
-  await createNotification(companyId, { toUid: assignedToUid, event: NOTIF_EVENTS.NOVA_NARUDZBINA, orderId, title: "Nova narudžbina dodeljena", body: "Otvorite narudžbinu za detalje." });
+  await createNotification(companyId, { toUid: assignedToUid, event: NOTIF_EVENTS.NOVA_NARUDZBINA, orderId, titleKey: "notif_new_order_title", bodyKey: "notif_new_order_manual_body" });
 }
 
 // --- Prihvatanje / odbijanje — Poglavlje 2.4, 4.3 ---
 export async function acceptOrder(companyId, orderId, { actorUid, actorName, orderCreatedByUid }) {
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.PRIHVACENA, acceptedAt: serverTimestamp(), updatedAt: serverTimestamp() });
   await logAudit(companyId, { action: "order_accepted", entity: "Orders", entityId: orderId, actorUid, actorName });
-  await createNotification(companyId, { toUid: orderCreatedByUid, event: NOTIF_EVENTS.NARUDZBINA_PRIHVACENA, orderId, title: "Narudžbina prihvaćena", body: `${actorName} je prihvatio narudžbinu.` });
+  await createNotification(companyId, { toUid: orderCreatedByUid, event: NOTIF_EVENTS.NARUDZBINA_PRIHVACENA, orderId, titleKey: "notif_order_accepted_title", bodyKey: "notif_order_accepted_body", bodyParams: { name: actorName } });
 }
 
 export async function rejectOrder(companyId, orderId, { reason, actorUid, actorName, orderCreatedByUid }) {
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ODBIJENA, rejectionReason: reason, updatedAt: serverTimestamp() });
   await logAudit(companyId, { action: "order_rejected", entity: "Orders", entityId: orderId, actorUid, actorName, details: reason });
-  await createNotification(companyId, { toUid: orderCreatedByUid, event: NOTIF_EVENTS.NARUDZBINA_ODBIJENA, orderId, title: "Narudžbina odbijena", body: reason });
+  await createNotification(companyId, { toUid: orderCreatedByUid, event: NOTIF_EVENTS.NARUDZBINA_ODBIJENA, orderId, titleKey: "notif_order_rejected_title", bodyKey: "notif_order_rejected_body", bodyParams: { reason } });
 }
 
 // --- Generički prelazak statusa (koristi se za u_nabavci, zavrsena_nabavka, u_isporuci, isporucena) ---
 export async function setOrderStatus(companyId, orderId, status, { actorName, actorUid, extra = {} } = {}) {
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status, updatedAt: serverTimestamp(), ...extra });
-  await logAudit(companyId, { action: "order_status_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: ORDER_STATUS_LABELS[status] });
+  await logAudit(companyId, { action: "order_status_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: statusLabel(status) });
 }
 
 // --- Naručilac menja narudžbinu dok nije prihvaćena (Poglavlje 2.3) ---
@@ -202,7 +202,7 @@ export async function addOrderItem(companyId, orderId, item) {
 export async function confirmReceipt(companyId, orderId, { actorUid, actorName, missingItemsToCarryOver = [] }) {
   await setOrderStatus(companyId, orderId, ORDER_STATUS.POTVRDJEN_PRIJEM, { actorUid, actorName });
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ZATVORENA, confirmedAt: serverTimestamp() });
-  await createNotification(companyId, { toUid: null, event: NOTIF_EVENTS.PRIJEM_POTVRDJEN, orderId, title: "Prijem potvrđen", body: "Naručilac je potvrdio prijem robe." });
+  await createNotification(companyId, { toUid: null, event: NOTIF_EVENTS.PRIJEM_POTVRDJEN, orderId, titleKey: "notif_receipt_confirmed_title", bodyKey: "notif_receipt_confirmed_body" });
 
   // Ako postoje nedostajuće stavke i naručilac je izabrao "Da" — kreira se nova narudžbina
   if (missingItemsToCarryOver.length) {

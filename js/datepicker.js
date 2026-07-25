@@ -16,11 +16,15 @@
 //   (auto-formatiranje dok korisnik kuca).
 // ============================================================================
 
-const MESECI_SR = [
-  "Januar", "Februar", "Mart", "April", "Maj", "Jun",
-  "Jul", "Avgust", "Septembar", "Oktobar", "Novembar", "Decembar",
+import { t } from "./i18n.js";
+
+const MESEC_KEYS = [
+  "month_jan", "month_feb", "month_mar", "month_apr", "month_may", "month_jun",
+  "month_jul", "month_aug", "month_sep", "month_oct", "month_nov", "month_dec",
 ];
-const DANI_SR = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"];
+const DAN_KEYS = ["day_mon", "day_tue", "day_wed", "day_thu", "day_fri", "day_sat", "day_sun"];
+const meseci = () => MESEC_KEYS.map((k) => t(k));
+const dani = () => DAN_KEYS.map((k) => t(k));
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -103,15 +107,15 @@ function otvoriKalendar(input) {
 
     pop.innerHTML = `
       <div class="dp-head">
-        <button type="button" class="dp-nav" data-nav="-1" aria-label="Prethodni mesec">‹</button>
-        <span class="dp-title">${MESECI_SR[viewMesec]} ${viewGodina}</span>
-        <button type="button" class="dp-nav" data-nav="1" aria-label="Sledeći mesec">›</button>
+        <button type="button" class="dp-nav" data-nav="-1" aria-label="${t('prev_month_aria')}">‹</button>
+        <span class="dp-title">${meseci()[viewMesec]} ${viewGodina}</span>
+        <button type="button" class="dp-nav" data-nav="1" aria-label="${t('next_month_aria')}">›</button>
       </div>
-      <div class="dp-grid dp-grid-dow">${DANI_SR.map((d) => `<span class="dp-dow">${d}</span>`).join("")}</div>
+      <div class="dp-grid dp-grid-dow">${dani().map((d) => `<span class="dp-dow">${d}</span>`).join("")}</div>
       <div class="dp-grid">${celije}</div>
       <div class="dp-foot">
-        <button type="button" class="dp-foot-btn dp-clear">Obriši</button>
-        <button type="button" class="dp-foot-btn dp-today-btn">Danas</button>
+        <button type="button" class="dp-foot-btn dp-clear">${t("delete")}</button>
+        <button type="button" class="dp-foot-btn dp-today-btn">${t("today")}</button>
       </div>
     `;
 

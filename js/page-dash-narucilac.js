@@ -1,10 +1,10 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { listenMyOrders, getOrderItems, getOrderDeliveryLocations, getOrderPurchases } from "./orders.js";
 import { getCompanySettings } from "./settings.js";
 import { generateOrderPdf } from "./order-print.js";
-import { formatDate, escapeHtml, badgeClassForStatus, ORDER_STATUS_LABELS, ROLES, toast } from "./utils.js";
+import { formatDate, escapeHtml, badgeClassForStatus, statusLabel, ROLES, toast } from "./utils.js";
 
 await loadLang();
 
@@ -38,15 +38,15 @@ function renderStats(orders) {
 
 function renderTable(orders) {
   const body = document.getElementById("orders-body");
-  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">Još uvek nemate narudžbina.</td></tr>`; return; }
+  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_orders_yet")}</td></tr>`; return; }
   body.innerHTML = orders.map((o) => `
     <tr class="row-link" data-id="${o.id}">
       <td class="mono">${o.orderNumber}</td>
-      <td>${o.priority === "hitno" ? '<span class="badge badge-urgent">Hitno</span>' : '<span class="badge badge-gray">Standardno</span>'}</td>
-      <td><span class="badge ${badgeClassForStatus(o.status)}">${ORDER_STATUS_LABELS[o.status] || o.status}</span></td>
+      <td>${o.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`}</td>
+      <td><span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span></td>
       <td>${escapeHtml(o.assignedToName || "—")}</td>
       <td>${formatDate(o.createdAt)}</td>
-      <td><button class="btn btn-sm btn-outline pdf-btn" data-pdf-id="${o.id}" data-pdf-number="${escapeHtml(o.orderNumber)}" title="Preuzmi narudžbenicu kao PDF">🖨️ PDF</button></td>
+      <td><button class="btn btn-sm btn-outline pdf-btn" data-pdf-id="${o.id}" data-pdf-number="${escapeHtml(o.orderNumber)}" title="${t('download_order_pdf_title')}">🖨️ PDF</button></td>
     </tr>
   `).join("");
   body.querySelectorAll(".row-link").forEach((row) => {
@@ -59,12 +59,12 @@ function renderTable(orders) {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const original = btn.textContent;
-      btn.disabled = true; btn.textContent = "Generisanje...";
+      btn.disabled = true; btn.textContent = t("generating_ellipsis");
       try {
         await downloadOrderPdf(btn.dataset.pdfId);
       } catch (err) {
         console.error(err);
-        toast("Greška pri generisanju PDF-a.", "error");
+        toast(t("toast_pdf_generate_error"), "error");
       } finally {
         btn.disabled = false; btn.textContent = original;
       }
@@ -82,6 +82,6 @@ async function downloadOrderPdf(orderId) {
     getCompanySettings(companyIdValue),
   ]);
   const order = latestOrders.find((o) => o.id === orderId);
-  if (!order) { toast("Narudžbina nije pronađena.", "error"); return; }
+  if (!order) { toast(t("toast_order_not_found"), "error"); return; }
   await generateOrderPdf({ company, order, items, purchases, deliveryLocations, companyId: companyIdValue });
 }

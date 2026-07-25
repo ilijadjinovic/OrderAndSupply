@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Prijava — Sistem za naručivanje i nabavku — Order &amp; Supply</title>
+<title data-i18n="page_title_login">Prijava — Sistem za naručivanje i nabavku — Order &amp; Supply</title>
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
 <link rel="apple-touch-icon" href="./assets/icon-192.png" />
@@ -17,7 +17,7 @@
       <img class="brand-mark" src="./assets/icon-192.png" alt="Order & Supply" />
       <h2>Order &amp; Supply</h2>
     </div>
-    <p class="muted" style="margin-bottom:20px;">Sistem za naručivanje i nabavku robe</p>
+    <p class="muted" style="margin-bottom:20px;" data-i18n="login_subtitle">Sistem za naručivanje i nabavku robe</p>
 
     <form id="login-form">
       <div class="field">
@@ -34,7 +34,7 @@
     <div class="auth-foot">
       <a href="#" id="forgot-link" data-i18n="forgot_password">Zaboravljena lozinka?</a>
       <div class="divider"></div>
-      <span class="muted">Nemate firmu registrovanu?</span>
+      <span class="muted" data-i18n="no_company_registered">Nemate firmu registrovanu?</span>
       <a href="./register-company.html" data-i18n="register_company">Registruj firmu</a>
     </div>
   </div>
@@ -43,7 +43,7 @@
 <script type="module">
   import { login, resetPassword, getUserProfile, redirectForRole } from "./js/auth.js";
   import { toast, escapeHtml } from "./js/utils.js";
-  import { loadLang } from "./js/i18n.js";
+  import { loadLang, t } from "./js/i18n.js";
   import { onAuthStateChanged, auth } from "./js/firebase-init.js";
 
   loadLang();
@@ -62,23 +62,23 @@
     try {
       const cred = await login(email, password);
       const profile = await getUserProfile(cred.user.uid);
-      if (!profile) { toast("Nalog nije povezan ni sa jednom firmom.", "error"); return; }
-      if (profile.active === false) { toast("Vaš nalog je deaktiviran.", "error"); return; }
+      if (!profile) { toast(t("toast_account_not_linked"), "error"); return; }
+      if (profile.active === false) { toast(t("toast_account_deactivated"), "error"); return; }
       window.location.href = redirectForRole(profile.role);
     } catch (err) {
-      toast("Neuspešna prijava: pogrešan email ili lozinka.", "error");
+      toast(t("toast_login_failed"), "error");
     }
   });
 
   document.getElementById("forgot-link").addEventListener("click", async (e) => {
     e.preventDefault();
     const email = document.getElementById("email").value.trim();
-    if (!email) { toast("Prvo unesite email adresu.", "error"); return; }
+    if (!email) { toast(t("toast_enter_email_first"), "error"); return; }
     try {
       await resetPassword(email);
-      toast("Poslat je link za resetovanje lozinke.", "success");
+      toast(t("toast_reset_link_sent"), "success");
     } catch {
-      toast("Greška pri slanju emaila.", "error");
+      toast(t("toast_email_send_error"), "error");
     }
   });
 </script>

@@ -17,9 +17,12 @@ export const NOTIF_EVENTS = {
   NOVA_PORUKA: "nova_poruka",
 };
 
-export async function createNotification(companyId, { toUid, event, title, body, orderId = null }) {
+// titleKey/bodyKey su i18n ključevi (Poglavlje 13.) — tekst se prevodi u trenutku
+// prikaza (nav.js), prema jeziku koji je trenutno aktivan kod primaoca, a ne prema
+// jeziku onoga ko je izazvao notifikaciju. bodyParams se ubacuju u {placeholder}-e.
+export async function createNotification(companyId, { toUid, event, titleKey, bodyKey = null, bodyParams = null, body = null, orderId = null }) {
   await addDoc(collection(db, "companies", companyId, "notifications"), {
-    toUid, event, title, body, orderId, read: false, createdAt: serverTimestamp(),
+    toUid, event, titleKey, bodyKey, bodyParams, body, orderId, read: false, createdAt: serverTimestamp(),
   });
 }
 

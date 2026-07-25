@@ -1,6 +1,6 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { getSuppliers, getSupplierLocations } from "./suppliers.js";
 import { getProducts } from "./catalog.js";
 import { getLocations } from "./locations.js";
@@ -31,19 +31,22 @@ requireAuth(["narucilac"], async (user, profile) => {
   renderDeliveryLocationOptions();
 
   const templates = await getTemplates(companyId);
-  document.getElementById("template-select").innerHTML += templates.map((t) => `<option value="${t.id}">${escapeHtml(t.name)} (${t.type})</option>`).join("");
+  document.getElementById("template-select").innerHTML += templates.map((tp) => `<option value="${tp.id}">${escapeHtml(tp.name)} (${tp.type})</option>`).join("");
+
+  document.getElementById("priority-step-title").textContent = `4. ${t("priority")}`;
+  document.getElementById("save-step-title").textContent = `5. ${t("save_as_optional_title")}`;
 
   if (assignmentMode === "narucilac_bira") {
     document.getElementById("isporucilac-panel").classList.remove("hidden");
-    document.getElementById("priority-step-title").textContent = "5. Prioritet";
-    document.getElementById("save-step-title").textContent = "6. Sačuvaj kao (opciono)";
+    document.getElementById("priority-step-title").textContent = `5. ${t("priority")}`;
+    document.getElementById("save-step-title").textContent = `6. ${t("save_as_optional_title")}`;
     const isporucioci = await getIsporucioci(companyId);
     document.getElementById("isporucilac-select").innerHTML += isporucioci
       .map((u) => `<option value="${u.uid}">${escapeHtml(u.name)}</option>`).join("");
   }
 
   const preselect = getParam("template");
-  if (preselect && templates.some((t) => t.id === preselect)) {
+  if (preselect && templates.some((tp) => tp.id === preselect)) {
     document.getElementById("template-select").value = preselect;
     document.getElementById("template-select").dispatchEvent(new Event("change"));
   }
@@ -55,15 +58,15 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   const pickupSelect = document.getElementById("pickup-select");
   const productList = document.getElementById("product-list");
   const searchInput = document.getElementById("product-search");
-  pickupSelect.innerHTML = `<option value="any">Bilo koja lokacija</option>`;
-  productList.innerHTML = `<tr class="empty-row"><td colspan="6">Izaberite dobavljača.</td></tr>`;
+  pickupSelect.innerHTML = `<option value="any">${t("any_location")}</option>`;
+  productList.innerHTML = `<tr class="empty-row"><td colspan="6">${t("select_supplier_prompt")}</td></tr>`;
   searchInput.value = "";
   if (!supplierId) return;
 
   const [locs, products] = await Promise.all([getSupplierLocations(companyId, supplierId), getProducts(companyId, supplierId)]);
   pickupSelect.innerHTML += locs.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
 
-  if (!products.length) { productList.innerHTML = `<tr class="empty-row"><td colspan="6">Ovaj dobavljač još nema proizvoda u katalogu.</td></tr>`; return; }
+  if (!products.length) { productList.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_products_in_catalog")}</td></tr>`; return; }
   const supplier = suppliers.find((s) => s.id === supplierId);
   productList.innerHTML = products.map((p) => `
     <tr data-product-id="${p.id}" data-name="${escapeHtml(p.name.toLowerCase())}">
@@ -71,10 +74,10 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
       <td>${escapeHtml(p.unit)}</td>
       <td class="mono">${escapeHtml(p.code || "—")}</td>
       <td><input type="number" min="0.1" step="0.1" value="1" class="qty-input" style="width:80px;" /></td>
-      <td><input type="text" placeholder="Napomena" class="note-input" /></td>
-      <td><button class="btn btn-sm btn-amber" data-add="${p.id}">+ Dodaj</button></td>
+      <td><input type="text" placeholder="${t('note')}" class="note-input" /></td>
+      <td><button class="btn btn-sm btn-amber" data-add="${p.id}">+ ${t("add")}</button></td>
     </tr>
-  `).join("") + `<tr class="empty-row hidden" id="product-search-empty"><td colspan="6">Nema proizvoda za taj upit.</td></tr>`;
+  `).join("") + `<tr class="empty-row hidden" id="product-search-empty"><td colspan="6">${t("no_products_for_query")}</td></tr>`;
 
   productList.querySelectorAll("button[data-add]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -84,12 +87,12 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
       const note = row.querySelector(".note-input").value.trim();
       const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
       cart.push({
-        tempId: uid("item"), supplierId, supplierName: supplier?.name || "Dobavljač",
+        tempId: uid("item"), supplierId, supplierName: supplier?.name || t("supplier"),
         productId: product.id, productName: product.name, unit: product.unit, quantity: qty, note,
-        pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : "Bilo koja lokacija",
+        pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : t("any_location"),
         deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
       });
-      toast(`Dodato: ${product.name}`, "success");
+      toast(t("toast_item_added", { name: product.name }), "success");
       renderCart();
     });
   });
@@ -121,10 +124,10 @@ document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
 // --- Slobodan (ručni) unos stavke — samo naziv, količina, JM, napomena ---
 document.getElementById("manual-add-btn").addEventListener("click", () => {
   const supplierId = document.getElementById("supplier-select").value;
-  if (!supplierId) { toast("Prvo izaberite dobavljača.", "error"); return; }
+  if (!supplierId) { toast(t("toast_select_supplier_first"), "error"); return; }
 
   const name = document.getElementById("manual-name").value.trim();
-  if (!name) { toast("Unesite naziv artikla.", "error"); return; }
+  if (!name) { toast(t("toast_enter_item_name"), "error"); return; }
   const qty = Number(document.getElementById("manual-qty").value) || 1;
   const unit = document.getElementById("manual-unit").value.trim() || "kom";
   const note = document.getElementById("manual-note").value.trim();
@@ -134,14 +137,14 @@ document.getElementById("manual-add-btn").addEventListener("click", () => {
   const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
 
   cart.push({
-    tempId: uid("item"), supplierId, supplierName: supplier?.name || "Dobavljač",
+    tempId: uid("item"), supplierId, supplierName: supplier?.name || t("supplier"),
     productId: "", productName: name, unit, quantity: qty, note,
-    pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : "Bilo koja lokacija",
+    pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : t("any_location"),
     deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
     manualEntry: true,
   });
 
-  toast(`Dodato: ${name}`, "success");
+  toast(t("toast_item_added", { name }), "success");
   document.getElementById("manual-name").value = "";
   document.getElementById("manual-qty").value = "1";
   document.getElementById("manual-note").value = "";
@@ -152,7 +155,7 @@ document.getElementById("manual-add-btn").addEventListener("click", () => {
 // --- Delivery locations ---
 function renderDeliveryLocationOptions() {
   const host = document.getElementById("delivery-locations");
-  if (!companyLocations.length) { host.innerHTML = `<p class="muted">Nema definisanih lokacija firme. Dodajte ih u Admin → Lokacije.</p>`; return; }
+  if (!companyLocations.length) { host.innerHTML = `<p class="muted">${t("no_company_locations_hint")}</p>`; return; }
   host.innerHTML = companyLocations.map((l) => `
     <label class="checkbox-row" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;">
       <input type="checkbox" class="delivery-loc-check" value="${l.id}" data-name="${escapeHtml(l.name)}" />
@@ -171,24 +174,24 @@ function renderDeliveryLocationOptions() {
 // --- Cart rendering ---
 function renderCart() {
   const host = document.getElementById("cart-host");
-  if (!cart.length) { host.innerHTML = `<p class="muted">Još niste dodali artikle.</p>`; return; }
+  if (!cart.length) { host.innerHTML = `<p class="muted">${t("no_items_added_yet")}</p>`; return; }
 
   const bySupplier = {};
   cart.forEach((i) => { (bySupplier[i.supplierId] ||= { name: i.supplierName, items: [] }).items.push(i); });
 
   const deliveryOptions = chosenDeliveryLocations.length
     ? chosenDeliveryLocations.map((l) => `<option value="${l.locationId}">${escapeHtml(l.locationName)}</option>`).join("")
-    : `<option value="">— izaberite lokaciju isporuke —</option>`;
+    : `<option value="">${t("choose_delivery_location_placeholder")}</option>`;
 
   host.innerHTML = Object.entries(bySupplier).map(([supplierId, group]) => `
     <div class="supplier-block">
-      <div class="supplier-block-head"><h3>${escapeHtml(group.name)}</h3><span class="muted">${group.items.length} artikala</span></div>
+      <div class="supplier-block-head"><h3>${escapeHtml(group.name)}</h3><span class="muted">${t("items_count", { count: group.items.length })}</span></div>
       ${group.items.map((item) => `
         <div class="item-row" data-temp-id="${item.tempId}">
-          <div><strong>${escapeHtml(item.productName)}</strong>${item.manualEntry ? ' <span class="badge badge-gray">Ručni unos</span>' : ""}<div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div></div>
+          <div><strong>${escapeHtml(item.productName)}</strong>${item.manualEntry ? ` <span class="badge badge-gray">${t("manual_entry_badge")}</span>` : ""}<div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div></div>
           <input type="number" min="0.1" step="0.1" value="${item.quantity}" class="cart-qty" />
           <span class="muted">${escapeHtml(item.unit)}</span>
-          <input type="text" value="${escapeHtml(item.note)}" placeholder="Napomena" class="cart-note" />
+          <input type="text" value="${escapeHtml(item.note)}" placeholder="${t('note')}" class="cart-note" />
           <select class="cart-delivery">${deliveryOptions}</select>
           <button class="btn btn-sm btn-danger" data-remove="${item.tempId}">✕</button>
         </div>
@@ -220,10 +223,10 @@ document.getElementById("template-select").addEventListener("change", async (e) 
   const id = e.target.value;
   if (!id) return;
   const templates = await getTemplates(companyId);
-  const tpl = templates.find((t) => t.id === id);
+  const tpl = templates.find((tp) => tp.id === id);
   if (!tpl) return;
   cart = tpl.items.map((i) => ({ ...i, tempId: uid("item"), deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "" }));
-  toast(`Učitano iz: ${tpl.name}`, "success");
+  toast(t("toast_loaded_from_template", { name: tpl.name }), "success");
   renderCart();
 });
 
@@ -233,13 +236,13 @@ document.getElementById("save-as-type").addEventListener("change", (e) => {
 
 // --- Submit ---
 document.getElementById("submit-order").addEventListener("click", async () => {
-  if (!cart.length) { toast("Dodajte bar jedan artikal.", "error"); return; }
-  if (!chosenDeliveryLocations.length) { toast("Izaberite bar jednu lokaciju isporuke.", "error"); return; }
+  if (!cart.length) { toast(t("toast_add_at_least_one_item"), "error"); return; }
+  if (!chosenDeliveryLocations.length) { toast(t("toast_select_at_least_one_delivery_location"), "error"); return; }
   const missingDelivery = cart.find((i) => !i.deliveryLocationId);
-  if (missingDelivery) { toast(`Izaberite lokaciju isporuke za: ${missingDelivery.productName}`, "error"); return; }
+  if (missingDelivery) { toast(t("toast_select_delivery_location_for", { name: missingDelivery.productName }), "error"); return; }
   const isporucilacSelect = document.getElementById("isporucilac-select");
   if (assignmentMode === "narucilac_bira" && !isporucilacSelect.value) {
-    toast("Izaberite isporučioca.", "error"); return;
+    toast(t("toast_select_fulfiller"), "error"); return;
   }
 
   const priority = document.querySelector('input[name="priority"]:checked').value;
@@ -265,11 +268,11 @@ document.getElementById("submit-order").addEventListener("click", async () => {
       await saveTemplate(companyId, { name: saveAsName, type: saveAsType, items, ownerUid: uidValue, recurringDays, actorName });
     }
 
-    toast("Narudžbina je poslata.", "success");
+    toast(t("toast_order_submitted"), "success");
     window.location.href = `./order-detail.html?order=${orderId}`;
   } catch (err) {
     console.error(err);
-    toast("Greška pri slanju narudžbine.", "error");
+    toast(t("toast_order_submit_error"), "error");
     btn.disabled = false;
   }
 });

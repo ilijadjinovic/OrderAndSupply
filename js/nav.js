@@ -4,7 +4,7 @@
 import { logout } from "./auth.js";
 import { listenNotifications, markAsRead } from "./notifications.js";
 import { setLang, currentLang, t } from "./i18n.js";
-import { formatDate, ROLE_LABELS } from "./utils.js";
+import { formatDate, roleLabel } from "./utils.js";
 
 const MENUS = {
   master_admin: [
@@ -52,18 +52,18 @@ export function renderNav({ companyId, uid, profile }) {
           </a>`).join("")}
       </nav>
       <div class="side-footer">
-        <span class="role-pill">${ROLE_LABELS[profile.role] || profile.role}</span>
+        <span class="role-pill">${roleLabel(profile.role)}</span>
       </div>
     </aside>
     <header class="topbar">
-      <button class="icon-btn" id="menu-toggle" aria-label="Meni">☰</button>
+      <button class="icon-btn" id="menu-toggle" aria-label="${t("menu_aria")}">☰</button>
       <div class="topbar-spacer"></div>
-      <div class="lang-toggle" id="lang-toggle" role="group" aria-label="Jezik">
+      <div class="lang-toggle" id="lang-toggle" role="group" aria-label="${t("language_aria")}">
         <button type="button" class="lang-option" data-lang="sr">SR</button>
         <button type="button" class="lang-option" data-lang="en">EN</button>
       </div>
       <div class="notif-wrap">
-        <button class="icon-btn" id="notif-btn" aria-label="Notifikacije">🔔<span id="notif-dot" class="notif-dot hidden"></span></button>
+        <button class="icon-btn" id="notif-btn" aria-label="${t("notifications_aria")}">🔔<span id="notif-dot" class="notif-dot hidden"></span></button>
         <div class="notif-panel hidden" id="notif-panel"></div>
       </div>
       <div class="user-chip" title="${profile.name || profile.email}">
@@ -110,8 +110,8 @@ export function renderNav({ companyId, uid, profile }) {
     notifPanel.innerHTML = notifs.length
       ? notifs.map((n) => `
         <div class="notif-item ${n.read ? "" : "unread"}" data-id="${n.id}">
-          <strong>${n.title}</strong>
-          <p>${n.body || ""}</p>
+          <strong>${n.titleKey ? t(n.titleKey) : (n.title || "")}</strong>
+          <p>${n.bodyKey ? t(n.bodyKey, n.bodyParams || {}) : (n.body || "")}</p>
           <span class="notif-time">${formatDate(n.createdAt)}</span>
         </div>`).join("")
       : `<div class="notif-empty">${t("no_data")}</div>`;

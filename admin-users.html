@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Korisnici — Admin firme — Order &amp; Supply</title>
+<title data-i18n="page_title_users">Korisnici — Admin firme — Order &amp; Supply</title>
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
 <link rel="apple-touch-icon" href="./assets/icon-192.png" />
@@ -15,15 +15,15 @@
   <div id="app-nav"></div>
   <main class="content">
     <div class="page-header">
-      <div><div class="eyebrow">Admin firme</div><h1 data-i18n="users">Korisnici</h1></div>
-      <button class="btn btn-amber" id="new-user-btn">+ Novi korisnik</button>
+      <div><div class="eyebrow" data-i18n="role_admin">Admin firme</div><h1 data-i18n="users">Korisnici</h1></div>
+      <button class="btn btn-amber" id="new-user-btn" data-i18n="new_user_btn">+ Novi korisnik</button>
     </div>
 
     <div class="panel">
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Ime</th><th>Email</th><th>Uloga</th><th>Status</th><th></th></tr></thead>
-          <tbody id="users-body"><tr class="empty-row"><td colspan="5">Učitavanje...</td></tr></tbody>
+          <thead><tr><th data-i18n="full_name_short">Ime</th><th>Email</th><th data-i18n="role_label">Uloga</th><th data-i18n="status">Status</th><th></th></tr></thead>
+          <tbody id="users-body"><tr class="empty-row"><td colspan="5" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -32,20 +32,20 @@
 
 <div class="modal-overlay hidden" id="user-modal">
   <div class="modal-card">
-    <div class="modal-head"><h2>Novi korisnik</h2><button class="icon-btn" id="close-modal">✕</button></div>
+    <div class="modal-head"><h2 data-i18n="new_user_title">Novi korisnik</h2><button class="icon-btn" id="close-modal">✕</button></div>
     <form id="user-form">
-      <div class="field"><label>Ime i prezime</label><input type="text" id="u-name" required /></div>
+      <div class="field"><label data-i18n="full_name_label">Ime i prezime</label><input type="text" id="u-name" required /></div>
       <div class="field"><label>Email</label><input type="email" id="u-email" required /></div>
-      <div class="field"><label>Privremena lozinka</label><input type="password" id="u-password" required minlength="6" /></div>
+      <div class="field"><label data-i18n="temp_password_label">Privremena lozinka</label><input type="password" id="u-password" required minlength="6" /></div>
       <div class="field">
-        <label>Uloga</label>
+        <label data-i18n="role_label">Uloga</label>
         <select id="u-role">
-          <option value="admin">Admin firme</option>
-          <option value="narucilac" selected>Naručilac</option>
-          <option value="isporucilac">Isporučilac</option>
+          <option value="admin" data-i18n="role_admin">Admin firme</option>
+          <option value="narucilac" selected data-i18n="role_narucilac">Naručilac</option>
+          <option value="isporucilac" data-i18n="role_isporucilac">Isporučilac</option>
         </select>
       </div>
-      <button type="submit" class="btn btn-primary" style="width:100%;">Kreiraj nalog</button>
+      <button type="submit" class="btn btn-primary" style="width:100%;" data-i18n="create_account_btn">Kreiraj nalog</button>
     </form>
   </div>
 </div>

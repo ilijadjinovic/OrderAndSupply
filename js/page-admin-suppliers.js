@@ -1,6 +1,6 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t } from "./i18n.js";
 import { listenSuppliers, addSupplier, updateSupplier, deleteSupplier, addSupplierLocation, deleteSupplierLocation, getSupplierLocations } from "./suppliers.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
 
@@ -17,7 +17,7 @@ requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
 function render(suppliers) {
   const isAdmin = currentRole === ROLES.ADMIN;
   const body = document.getElementById("suppliers-body");
-  if (!suppliers.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">Nema dobavljača. Dodajte prvog dobavljača.</td></tr>`; return; }
+  if (!suppliers.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_suppliers")}</td></tr>`; return; }
   body.innerHTML = suppliers.map((s) => {
     const canEdit = isAdmin || s.createdBy === currentUid;
     return `
@@ -28,10 +28,10 @@ function render(suppliers) {
       <td>${escapeHtml(s.phone || "—")}</td>
       <td>${escapeHtml(s.email || "—")}</td>
       <td>
-        ${canEdit ? `<button class="btn btn-sm btn-outline" data-action="edit" data-id="${s.id}">✎ Izmeni</button>` : ""}
-        <button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 Lokacije</button>
-        <a class="btn btn-sm btn-outline" href="./admin-catalog.html?supplier=${s.id}">📦 Katalog</a>
-        ${isAdmin ? `<button class="btn btn-sm btn-danger" data-action="delete" data-id="${s.id}">Obriši</button>` : ""}
+        ${canEdit ? `<button class="btn btn-sm btn-outline" data-action="edit" data-id="${s.id}">✎ ${t("edit")}</button>` : ""}
+        <button class="btn btn-sm btn-outline" data-action="locations" data-id="${s.id}" data-name="${escapeHtml(s.name)}">📍 ${t("locations")}</button>
+        <a class="btn btn-sm btn-outline" href="./admin-catalog.html?supplier=${s.id}">📦 ${t("catalog")}</a>
+        ${isAdmin ? `<button class="btn btn-sm btn-danger" data-action="delete" data-id="${s.id}">${t("delete")}</button>` : ""}
       </td>
     </tr>
   `;
@@ -39,9 +39,9 @@ function render(suppliers) {
 
   body.querySelectorAll("button[data-action=delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Obrisati dobavljača?")) return;
+      if (!confirm(t("confirm_delete_supplier"))) return;
       await deleteSupplier(companyId, btn.dataset.id);
-      toast("Dobavljač obrisan.", "success");
+      toast(t("toast_supplier_deleted"), "success");
     });
   });
   body.querySelectorAll("button[data-action=locations]").forEach((btn) => {
@@ -57,7 +57,7 @@ const supplierModal = document.getElementById("supplier-modal");
 
 function openSupplierModal(supplier = null) {
   activeEditId = supplier?.id || null;
-  document.getElementById("supplier-modal-title").textContent = supplier ? `Izmena dobavljača — ${supplier.name}` : "Novi dobavljač";
+  document.getElementById("supplier-modal-title").textContent = supplier ? `${t("edit_supplier_title")} — ${supplier.name}` : t("new_supplier_title");
   document.getElementById("s-name").value = supplier?.name || "";
   document.getElementById("s-pib").value = supplier?.pib || "";
   document.getElementById("s-maticni").value = supplier?.maticniBroj || "";
@@ -85,10 +85,10 @@ document.getElementById("supplier-form").addEventListener("submit", async (e) =>
   };
   if (activeEditId) {
     await updateSupplier(companyId, activeEditId, data, actorName);
-    toast("Dobavljač izmenjen.", "success");
+    toast(t("toast_supplier_updated"), "success");
   } else {
     await addSupplier(companyId, { ...data, actorName, createdBy: currentUid });
-    toast("Dobavljač dodat.", "success");
+    toast(t("toast_supplier_added"), "success");
   }
   supplierModal.classList.add("hidden");
   e.target.reset();
@@ -101,7 +101,7 @@ document.getElementById("close-location-modal").addEventListener("click", () => 
 
 async function openLocations(supplierId, name) {
   activeSupplierId = supplierId; activeSupplierName = name;
-  document.querySelector("#location-modal h2").textContent = `Lokacije preuzimanja — ${name}`;
+  document.querySelector("#location-modal h2").textContent = `${t("pickup_locations_title")} — ${name}`;
   locationModal.classList.remove("hidden");
   await refreshLocations();
 }
@@ -112,7 +112,7 @@ async function refreshLocations() {
   const host = document.getElementById("location-list");
   host.innerHTML = locs.length
     ? locs.map((l) => `<div class="attachment-item"><span>📍 ${escapeHtml(l.name)} ${l.address ? "— " + escapeHtml(l.address) : ""}</span>${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${l.id}" style="margin-left:auto;">✕</button>` : ""}</div>`).join("")
-    : `<p class="muted">Nema dodatih lokacija — koristiće se "bilo koja lokacija".</p>`;
+    : `<p class="muted">${t("no_locations_added_hint")}</p>`;
   host.querySelectorAll("button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await deleteSupplierLocation(companyId, activeSupplierId, btn.dataset.id);

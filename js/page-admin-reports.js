@@ -1,6 +1,6 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t, currentLang } from "./i18n.js";
 import { getSuppliers } from "./suppliers.js";
 import { getNarucioci, getIsporucioci } from "./users.js";
 import { getCompanySettings } from "./settings.js";
@@ -9,7 +9,7 @@ import {
   aggregateByNarucilac, aggregateByIsporucilac, aggregateBySupplier, financialSummary,
 } from "./reports.js";
 import { exportCsv, exportExcel, exportPdf } from "./import-export.js";
-import { escapeHtml, toast, formatDate, ROLES, ORDER_STATUS_LABELS, badgeClassForStatus } from "./utils.js";
+import { escapeHtml, toast, formatDate, ROLES, statusLabel, ORDER_STATUS_ALL, badgeClassForStatus } from "./utils.js";
 import { getISO, setISO, initDatepickers } from "./datepicker.js";
 
 await loadLang();
@@ -32,13 +32,14 @@ requireAuth([ROLES.ADMIN], async (user, profile) => {
   document.getElementById("f-supplier").innerHTML += suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
   document.getElementById("f-narucilac").innerHTML += narucioci.map((u) => `<option value="${u.uid}">${escapeHtml(u.name)}</option>`).join("");
   document.getElementById("f-isporucilac").innerHTML += isporucioci.map((u) => `<option value="${u.uid}">${escapeHtml(u.name)}</option>`).join("");
-  document.getElementById("f-status").innerHTML += Object.entries(ORDER_STATUS_LABELS).map(([val, label]) => `<option value="${val}">${escapeHtml(label)}</option>`).join("");
+  document.getElementById("f-status").innerHTML += ORDER_STATUS_ALL.map((val) => `<option value="${val}">${escapeHtml(statusLabel(val))}</option>`).join("");
 
   await runReport();
 });
 
 function fmtAmount(n) {
-  return `${(Number(n) || 0).toLocaleString("sr-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+  const locale = currentLang === "en" ? "en-GB" : "sr-RS";
+  return `${(Number(n) || 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
 async function runReport() {
@@ -49,13 +50,13 @@ async function runReport() {
 
   const btn = document.getElementById("run-report-btn");
   const original = btn.textContent;
-  btn.disabled = true; btn.textContent = "Učitavanje...";
+  btn.disabled = true; btn.textContent = t("loading_ellipsis");
   try {
     fullDataset = await buildReportDataset(companyId, { dateFrom, dateTo });
     applyFiltersAndRender();
   } catch (err) {
     console.error(err);
-    toast("Greška pri učitavanju izveštaja.", "error");
+    toast(t("toast_report_load_error"), "error");
   } finally {
     btn.disabled = false; btn.textContent = original;
   }
@@ -68,7 +69,7 @@ function applyFiltersAndRender() {
     supplierId: document.getElementById("f-supplier").value,
     status: document.getElementById("f-status").value,
   });
-  document.getElementById("report-meta").textContent = `${filteredRows.length} narudžbina u izveštaju.`;
+  document.getElementById("report-meta").textContent = t("report_meta_count", { count: filteredRows.length });
   renderOrdersTab();
   renderNarucioci();
   renderIsporucioci();
@@ -79,14 +80,14 @@ function applyFiltersAndRender() {
 // --------------------------------------------------------------- PO NARUDŽBENICAMA
 function renderOrdersTab() {
   const body = document.getElementById("orders-body");
-  if (!filteredRows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">Nema narudžbina za izabrane filtere.</td></tr>`; return; }
+  if (!filteredRows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_orders_for_filters")}</td></tr>`; return; }
   body.innerHTML = filteredRows.map((r) => `
     <tr>
       <td class="mono"><a href="./order-detail.html?order=${r.id}">${escapeHtml(r.orderNumber)}</a></td>
       <td>${formatDate(r.createdAt)}</td>
       <td>${escapeHtml(r.createdByName || "—")}</td>
       <td>${escapeHtml(r.assignedToName || "—")}</td>
-      <td><span class="badge ${badgeClassForStatus(r.status)}">${escapeHtml(ORDER_STATUS_LABELS[r.status] || r.status)}</span></td>
+      <td><span class="badge ${badgeClassForStatus(r.status)}">${escapeHtml(statusLabel(r.status))}</span></td>
       <td>${r.itemCount ?? (r.items || []).length}</td>
       <td>${r.total > 0 ? `<strong>${fmtAmount(r.total)}</strong>` : "—"}</td>
     </tr>
@@ -97,7 +98,7 @@ function renderOrdersTab() {
 function renderNarucioci() {
   const body = document.getElementById("narucioci-body");
   const agg = aggregateByNarucilac(filteredRows);
-  if (!agg.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">Nema podataka.</td></tr>`; return; }
+  if (!agg.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">${t("no_data")}</td></tr>`; return; }
   body.innerHTML = agg.map((a) => `
     <tr><td>${escapeHtml(a.name)}</td><td>${a.orderCount}</td><td><strong>${fmtAmount(a.total)}</strong></td></tr>
   `).join("");
@@ -107,7 +108,7 @@ function renderNarucioci() {
 function renderIsporucioci() {
   const body = document.getElementById("isporucioci-body");
   const agg = aggregateByIsporucilac(filteredRows);
-  if (!agg.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">Nema podataka.</td></tr>`; return; }
+  if (!agg.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">${t("no_data")}</td></tr>`; return; }
   body.innerHTML = agg.map((a) => `
     <tr><td>${escapeHtml(a.name)}</td><td>${a.orderCount}</td><td><strong>${fmtAmount(a.total)}</strong></td></tr>
   `).join("");
@@ -117,7 +118,7 @@ function renderIsporucioci() {
 function renderSuppliersTab() {
   const body = document.getElementById("suppliers-body-report");
   const agg = aggregateBySupplier(filteredRows);
-  if (!agg.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">Nema podataka.</td></tr>`; return; }
+  if (!agg.length) { body.innerHTML = `<tr class="empty-row"><td colspan="3">${t("no_data")}</td></tr>`; return; }
   body.innerHTML = agg.map((a) => `
     <tr><td>${escapeHtml(a.name)}</td><td>${a.orderCount}</td><td><strong>${fmtAmount(a.total)}</strong></td></tr>
   `).join("");
@@ -127,10 +128,10 @@ function renderSuppliersTab() {
 function renderFinanceTab() {
   const s = financialSummary(filteredRows);
   document.getElementById("finance-stats").innerHTML = `
-    <div class="stat-card"><div class="stat-label">Ukupno narudžbina</div><div class="stat-value">${s.totalOrders}</div></div>
-    <div class="stat-card teal"><div class="stat-label">Sa unetim iznosom</div><div class="stat-value">${s.ordersWithFinance}</div></div>
-    <div class="stat-card amber"><div class="stat-label">Bez unetog iznosa</div><div class="stat-value">${s.ordersWithoutFinance}</div></div>
-    <div class="stat-card"><div class="stat-label">Ukupan iznos</div><div class="stat-value" style="font-size:22px;">${fmtAmount(s.totalAmount)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t("finance_total_orders")}</div><div class="stat-value">${s.totalOrders}</div></div>
+    <div class="stat-card teal"><div class="stat-label">${t("finance_with_amount")}</div><div class="stat-value">${s.ordersWithFinance}</div></div>
+    <div class="stat-card amber"><div class="stat-label">${t("finance_without_amount")}</div><div class="stat-value">${s.ordersWithoutFinance}</div></div>
+    <div class="stat-card"><div class="stat-label">${t("finance_total_amount")}</div><div class="stat-value" style="font-size:22px;">${fmtAmount(s.totalAmount)}</div></div>
   `;
 }
 
@@ -138,47 +139,50 @@ function renderFinanceTab() {
 function rowsForExport(view) {
   if (view === "orders") {
     return filteredRows.map((r) => ({
-      "Broj narudžbine": r.orderNumber,
-      "Datum": formatDate(r.createdAt),
-      "Naručilac": r.createdByName || "—",
-      "Isporučilac": r.assignedToName || "—",
-      "Status": ORDER_STATUS_LABELS[r.status] || r.status,
-      "Broj artikala": r.itemCount ?? (r.items || []).length,
-      [`Ukupan iznos (${currency})`]: r.total.toFixed(2),
+      [t("export_col_order_number")]: r.orderNumber,
+      [t("export_col_date")]: formatDate(r.createdAt),
+      [t("role_narucilac")]: r.createdByName || "—",
+      [t("role_isporucilac")]: r.assignedToName || "—",
+      [t("status")]: statusLabel(r.status),
+      [t("export_col_item_count")]: r.itemCount ?? (r.items || []).length,
+      [`${t("export_col_total_amount")} (${currency})`]: r.total.toFixed(2),
     }));
   }
   if (view === "narucioci") {
-    return aggregateByNarucilac(filteredRows).map((a) => ({ "Naručilac": a.name, "Broj narudžbina": a.orderCount, [`Ukupan iznos (${currency})`]: a.total.toFixed(2) }));
+    return aggregateByNarucilac(filteredRows).map((a) => ({ [t("role_narucilac")]: a.name, [t("export_col_order_count")]: a.orderCount, [`${t("export_col_total_amount")} (${currency})`]: a.total.toFixed(2) }));
   }
   if (view === "isporucioci") {
-    return aggregateByIsporucilac(filteredRows).map((a) => ({ "Isporučilac": a.name, "Broj narudžbina": a.orderCount, [`Ukupan iznos (${currency})`]: a.total.toFixed(2) }));
+    return aggregateByIsporucilac(filteredRows).map((a) => ({ [t("role_isporucilac")]: a.name, [t("export_col_order_count")]: a.orderCount, [`${t("export_col_total_amount")} (${currency})`]: a.total.toFixed(2) }));
   }
   if (view === "suppliers") {
-    return aggregateBySupplier(filteredRows).map((a) => ({ "Dobavljač": a.name, "Broj narudžbina": a.orderCount, [`Ukupno plaćeno (${currency})`]: a.total.toFixed(2) }));
+    return aggregateBySupplier(filteredRows).map((a) => ({ [t("supplier")]: a.name, [t("export_col_order_count")]: a.orderCount, [`${t("export_col_total_paid")} (${currency})`]: a.total.toFixed(2) }));
   }
   return [];
 }
 
-const PDF_TITLES = {
-  orders: "Izveštaj — po narudžbenicama",
-  narucioci: "Izveštaj — po naručiocima",
-  isporucioci: "Izveštaj — po isporučiocima",
-  suppliers: "Izveštaj — po dobavljačima",
-};
+function pdfTitleFor(view) {
+  const keys = {
+    orders: "report_title_orders",
+    narucioci: "report_title_narucioci",
+    isporucioci: "report_title_isporucioci",
+    suppliers: "report_title_suppliers",
+  };
+  return t(keys[view]) || t("reports");
+}
 
 document.querySelectorAll("button[data-export]").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const view = btn.dataset.view;
     const rows = rowsForExport(view);
-    if (!rows.length) { toast("Nema podataka za izvoz.", "error"); return; }
+    if (!rows.length) { toast(t("toast_no_data_to_export"), "error"); return; }
     const filename = `izvestaj-${view}-${new Date().toISOString().slice(0, 10)}`;
     try {
       if (btn.dataset.export === "csv") exportCsv(filename, rows);
-      if (btn.dataset.export === "excel") await exportExcel(filename, rows, "Izveštaj");
-      if (btn.dataset.export === "pdf") await exportPdf(filename, PDF_TITLES[view] || "Izveštaj", rows);
+      if (btn.dataset.export === "excel") await exportExcel(filename, rows, t("reports"));
+      if (btn.dataset.export === "pdf") await exportPdf(filename, pdfTitleFor(view), rows);
     } catch (err) {
       console.error(err);
-      toast("Greška pri izvozu.", "error");
+      toast(t("toast_export_error"), "error");
     }
   });
 });

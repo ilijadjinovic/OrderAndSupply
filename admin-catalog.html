@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Katalog proizvoda — Order &amp; Supply</title>
+<title data-i18n="page_title_catalog">Katalog proizvoda — Order &amp; Supply</title>
 <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
 <link rel="apple-touch-icon" href="./assets/icon-192.png" />
@@ -15,29 +15,29 @@
   <div id="app-nav"></div>
   <main class="content">
     <div class="page-header">
-      <div><div class="eyebrow">Admin firme</div><h1 data-i18n="catalog">Katalog proizvoda</h1></div>
+      <div><div class="eyebrow" data-i18n="role_admin">Admin firme</div><h1 data-i18n="catalog">Katalog proizvoda</h1></div>
     </div>
 
     <div class="tabs">
-      <button class="tab-btn active" data-tab="products">Proizvodi dobavljača</button>
-      <button class="tab-btn" data-tab="categories">Kategorije</button>
+      <button class="tab-btn active" data-tab="products" data-i18n="tab_supplier_products">Proizvodi dobavljača</button>
+      <button class="tab-btn" data-tab="categories" data-i18n="categories">Kategorije</button>
     </div>
 
     <div id="tab-products">
       <div class="panel">
         <div class="panel-head">
-          <h2>Izaberi dobavljača</h2>
+          <h2 data-i18n="select_supplier">Izaberi dobavljača</h2>
           <select id="supplier-select" style="max-width:280px;"></select>
         </div>
         <form id="product-form" class="form-row">
-          <div class="field"><label>Naziv</label><input type="text" id="p-name" required /></div>
-          <div class="field"><label>Šifra</label><input type="text" id="p-code" /></div>
-          <div class="field"><label>Barkod</label><input type="text" id="p-barcode" /></div>
-          <div class="field"><label>Jedinica mere</label><input type="text" id="p-unit" value="kom" required /></div>
-          <div class="field"><label>Kategorija</label><select id="p-category"></select></div>
-          <div class="field"><label>PDV stopa (%)</label><input type="number" id="p-vat" value="20" /></div>
-          <div class="field"><label>Minimalna količina</label><input type="number" id="p-min" value="1" /></div>
-          <div class="field" style="display:flex;align-items:end;"><button type="submit" class="btn btn-amber" style="height:42px;width:100%;">+ Dodaj proizvod</button></div>
+          <div class="field"><label data-i18n="name">Naziv</label><input type="text" id="p-name" required /></div>
+          <div class="field"><label data-i18n="code">Šifra</label><input type="text" id="p-code" /></div>
+          <div class="field"><label data-i18n="barcode">Barkod</label><input type="text" id="p-barcode" /></div>
+          <div class="field"><label data-i18n="unit">Jedinica mere</label><input type="text" id="p-unit" value="kom" required /></div>
+          <div class="field"><label data-i18n="category">Kategorija</label><select id="p-category"></select></div>
+          <div class="field"><label data-i18n="vat_rate">PDV stopa (%)</label><input type="number" id="p-vat" value="20" /></div>
+          <div class="field"><label data-i18n="min_quantity">Minimalna količina</label><input type="number" id="p-min" value="1" /></div>
+          <div class="field" style="display:flex;align-items:end;"><button type="submit" class="btn btn-amber" style="height:42px;width:100%;" data-i18n="add_product_btn">+ Dodaj proizvod</button></div>
         </form>
       </div>
 
@@ -53,8 +53,8 @@
               <col style="width:10%">
               <col style="width:12%">
             </colgroup>
-            <thead><tr><th>Naziv</th><th>Šifra</th><th>JM</th><th>Kategorija</th><th>PDV</th><th>Min. kol.</th><th></th></tr></thead>
-            <tbody id="products-body"><tr class="empty-row"><td colspan="7">Izaberite dobavljača.</td></tr></tbody>
+            <thead><tr><th data-i18n="name">Naziv</th><th data-i18n="code">Šifra</th><th data-i18n="unit_short">JM</th><th data-i18n="category">Kategorija</th><th data-i18n="vat_short">PDV</th><th data-i18n="min_qty_short">Min. kol.</th><th></th></tr></thead>
+            <tbody id="products-body"><tr class="empty-row"><td colspan="7" data-i18n="select_a_supplier">Izaberite dobavljača.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -63,13 +63,13 @@
     <div id="tab-categories" class="hidden">
       <div class="panel">
         <form id="category-form" class="form-row" style="align-items:end;">
-          <div class="field"><label>Naziv kategorije</label><input type="text" id="c-name" required /></div>
-          <button type="submit" class="btn btn-amber" style="height:42px;">+ Dodaj</button>
+          <div class="field"><label data-i18n="category_name">Naziv kategorije</label><input type="text" id="c-name" required /></div>
+          <button type="submit" class="btn btn-amber" style="height:42px;" data-i18n="add_plus_btn">+ Dodaj</button>
         </form>
       </div>
       <div class="panel">
         <div class="table-wrap">
-          <table class="data-table"><thead><tr><th>Naziv</th><th></th></tr></thead><tbody id="categories-body"></tbody></table>
+          <table class="data-table"><thead><tr><th data-i18n="name">Naziv</th><th></th></tr></thead><tbody id="categories-body"></tbody></table>
         </div>
       </div>
     </div>

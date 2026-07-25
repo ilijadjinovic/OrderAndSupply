@@ -1,9 +1,9 @@
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
-import { loadLang } from "./i18n.js";
+import { loadLang, t, currentLang } from "./i18n.js";
 import { listenAllOrders, assignOrder, listenUnassignedOrders } from "./orders.js";
 import { getIsporucioci } from "./users.js";
-import { formatDate, escapeHtml, badgeClassForStatus, ORDER_STATUS_LABELS, ROLES, debounce } from "./utils.js";
+import { formatDate, escapeHtml, badgeClassForStatus, statusLabel, ROLES, roleLabel, debounce } from "./utils.js";
 
 await loadLang();
 
@@ -11,7 +11,7 @@ let allOrders = [];
 
 requireAuth([ROLES.ADMIN], (user, profile) => {
   renderNav({ companyId: profile.companyId, uid: user.uid, profile });
-  document.getElementById("company-name-eyebrow").textContent = profile.name ? "Admin firme" : "Admin firme";
+  document.getElementById("company-name-eyebrow").textContent = roleLabel("admin");
 
   listenAllOrders(profile.companyId, (orders) => {
     allOrders = orders;
@@ -51,7 +51,7 @@ function renderChart(orders) {
   const counts = days.map((d) => orders.filter((o) => o.createdAt?.toDate?.().toDateString() === d.toDateString()).length);
   const max = Math.max(1, ...counts);
   document.getElementById("chart-orders").innerHTML = days.map((d, i) => `
-    <div title="${d.toLocaleDateString("sr-RS")}: ${counts[i]}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;">
+    <div title="${d.toLocaleDateString(currentLang === 'en' ? 'en-GB' : 'sr-RS')}: ${counts[i]}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;">
       <div style="width:70%;background:var(--brand-500);border-radius:4px 4px 0 0;height:${(counts[i] / max) * 100}%;min-height:2px;"></div>
       <span style="font-size:9px;color:var(--ink-300);margin-top:4px;">${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.</span>
     </div>
@@ -69,19 +69,19 @@ function renderMetrics(orders) {
   }
   const claims = orders.filter((o) => o.status === "reklamacija").length;
   const rate = orders.length ? (100 - (claims / orders.length) * 100).toFixed(0) : 100;
-  document.getElementById("success-rate").textContent = `${rate}% uspešno · ${claims} reklamacija`;
+  document.getElementById("success-rate").textContent = t("success_rate_text", { rate, claims });
 }
 
 function renderOrdersTable(orders) {
   const body = document.getElementById("orders-body");
-  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">Nema narudžbina.</td></tr>`; return; }
+  if (!orders.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_orders")}</td></tr>`; return; }
   body.innerHTML = orders.slice(0, 100).map((o) => `
     <tr class="row-link" data-id="${o.id}">
       <td class="mono">${o.orderNumber}</td>
       <td>${escapeHtml(o.createdByName || "—")}</td>
       <td>${escapeHtml(o.assignedToName || "—")}</td>
-      <td>${o.priority === "hitno" ? '<span class="badge badge-urgent">Hitno</span>' : '<span class="badge badge-gray">Standardno</span>'}</td>
-      <td><span class="badge ${badgeClassForStatus(o.status)}">${ORDER_STATUS_LABELS[o.status] || o.status}</span></td>
+      <td>${o.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`}</td>
+      <td><span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span></td>
       <td>${formatDate(o.createdAt)}</td>
     </tr>
   `).join("");
