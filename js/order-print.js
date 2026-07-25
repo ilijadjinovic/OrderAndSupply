@@ -211,16 +211,19 @@ function drawSupplierSection(pdf, group, y) {
   y += 8;
 
   const cols = [
-    ["Proizvod", 62],
-    ["Količina", 22],
-    ["Lokacija isporuke", 48],
-    ["Napomena", 48],
+    ["Proizvod", 48],
+    ["Količina", 18],
+    ["Lokacija preuzimanja", 36],
+    ["Lokacija isporuke", 40],
+    ["Napomena", 38],
   ];
   y = drawTableHeader(pdf, cols, y);
   group.items.forEach((it, i) => {
+    const pickupText = it.pickupLocationId && it.pickupLocationId !== "any" ? (it.pickupLocationName || "—") : "—";
     y = drawTableRowWrapped(pdf, cols, [
       it.productName,
       `${it.quantity} ${it.unit}`,
+      pickupText,
       it.deliveryLocationName || "—",
       it.note || "—",
     ], y, i % 2 === 0);

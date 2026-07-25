@@ -149,7 +149,7 @@ function renderActionBar() {
 // ---------------------------------------------------------------- ITEMS TABLE
 function renderItemsTable() {
   const body = document.getElementById("items-body");
-  if (!items.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">Nema artikala.</td></tr>`; return; }
+  if (!items.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">Nema artikala.</td></tr>`; return; }
   const canEdit = profile.role === "narucilac" && order.createdByUid === uidValue && [ORDER_STATUS.KREIRANA, ORDER_STATUS.CEKA_PRIHVATANJE].includes(order.status);
 
   const statusBadge = (st) => ({
@@ -163,6 +163,7 @@ function renderItemsTable() {
     <tr>
       <td><strong>${escapeHtml(i.productName)}</strong></td>
       <td>${escapeHtml(i.supplierName)}</td>
+      <td>${i.pickupLocationId && i.pickupLocationId !== "any" ? escapeHtml(i.pickupLocationName || "—") : "—"}</td>
       <td>${i.quantity} ${escapeHtml(i.unit)}</td>
       <td>${escapeHtml(i.deliveryLocationName || "—")}</td>
       <td class="muted">${escapeHtml(i.note || "—")}</td>
