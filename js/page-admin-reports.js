@@ -159,6 +159,13 @@ function rowsForExport(view) {
   return [];
 }
 
+const PDF_TITLES = {
+  orders: "Izveštaj — po narudžbenicama",
+  narucioci: "Izveštaj — po naručiocima",
+  isporucioci: "Izveštaj — po isporučiocima",
+  suppliers: "Izveštaj — po dobavljačima",
+};
+
 document.querySelectorAll("button[data-export]").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const view = btn.dataset.view;
@@ -168,7 +175,7 @@ document.querySelectorAll("button[data-export]").forEach((btn) => {
     try {
       if (btn.dataset.export === "csv") exportCsv(filename, rows);
       if (btn.dataset.export === "excel") await exportExcel(filename, rows, "Izveštaj");
-      if (btn.dataset.export === "pdf") await exportPdf(filename, "Izveštaj — po narudžbenicama", rows);
+      if (btn.dataset.export === "pdf") await exportPdf(filename, PDF_TITLES[view] || "Izveštaj", rows);
     } catch (err) {
       console.error(err);
       toast("Greška pri izvozu.", "error");
