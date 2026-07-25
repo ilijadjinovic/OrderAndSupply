@@ -14,6 +14,7 @@
 // direktno kao pravi (selektabilan/pretraživ) vektorski font.
 // ============================================================================
 import { formatDate } from "./utils.js";
+import { getSupplierLocations } from "./suppliers.js";
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -199,8 +200,8 @@ function drawOrderMeta(pdf, order, deliveryLocations, y) {
   return y + 5;
 }
 
-// ── STAVKE PO DOBAVLJAČU ─────────────────────────────────────────
-function drawSupplierSection(pdf, group, y) {
+// ── STAVKE PO DOBAVLJAČU (grupisano po lokaciji preuzimanja) ─────
+function drawSupplierSection(pdf, group, y, pickupAddressMap) {
   y = checkPageBreak(pdf, y, 22);
   pdf.setFillColor(243, 245, 248);
   pdf.rect(M, y - 4, PW, 7, "F");
@@ -208,28 +209,53 @@ function drawSupplierSection(pdf, group, y) {
   pdf.setFontSize(10.5);
   pdf.setTextColor(26, 29, 33);
   pdf.text(`Dobavljač: ${group.name}`, M + 2, y);
-  y += 8;
+  y += 9;
 
-  const cols = [
-    ["Proizvod", 48],
-    ["Količina", 18],
-    ["Lokacija preuzimanja", 36],
-    ["Lokacija isporuke", 40],
-    ["Napomena", 38],
-  ];
-  y = drawTableHeader(pdf, cols, y);
-  group.items.forEach((it, i) => {
-    const pickupText = it.pickupLocationId && it.pickupLocationId !== "any" ? (it.pickupLocationName || "—") : "—";
-    y = drawTableRowWrapped(pdf, cols, [
-      it.productName,
-      `${it.quantity} ${it.unit}`,
-      pickupText,
-      it.deliveryLocationName || "—",
-      it.note || "—",
-    ], y, i % 2 === 0);
+  // Grupisanje stavki po lokaciji preuzimanja (redosled po prvom pojavljivanju)
+  const locGroups = [];
+  const locIndex = {};
+  group.items.forEach((it) => {
+    const key = (it.pickupLocationId && it.pickupLocationId !== "any") ? it.pickupLocationId : "any";
+    if (!(key in locIndex)) {
+      locIndex[key] = locGroups.length;
+      locGroups.push({
+        name: key === "any" ? "Bilo koja lokacija" : (it.pickupLocationName || "Lokacija"),
+        address: key === "any" ? "" : (pickupAddressMap[key] || ""),
+        items: [],
+      });
+    }
+    locGroups[locIndex[key]].items.push(it);
   });
 
-  return y + 6;
+  const cols = [
+    ["Proizvod", 66],
+    ["Količina", 22],
+    ["Lokacija isporuke", 46],
+    ["Napomena", 46],
+  ];
+
+  locGroups.forEach((g) => {
+    y = checkPageBreak(pdf, y, 15);
+    pdf.setFont(REPORT_FONT, "bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(60);
+    const locLabel = g.address ? `Lokacija preuzimanja: ${g.name} — ${g.address}` : `Lokacija preuzimanja: ${g.name}`;
+    pdf.text(locLabel, M + 2, y);
+    y += 5;
+
+    y = drawTableHeader(pdf, cols, y);
+    g.items.forEach((it, i) => {
+      y = drawTableRowWrapped(pdf, cols, [
+        it.productName,
+        `${it.quantity} ${it.unit}`,
+        it.deliveryLocationName || "—",
+        it.note || "—",
+      ], y, i % 2 === 0);
+    });
+    y += 4;
+  });
+
+  return y + 2;
 }
 
 // ── FINANSIJSKI PREGLED ─────────────────────────────────────────
@@ -321,10 +347,19 @@ function drawFooter(pdf, y) {
 // items: sve stavke narudžbine (OrderItems)
 // purchases: nabavke po dobavljaču (za finansijski pregled, može biti prazan niz)
 // deliveryLocations: lokacije isporuke narudžbine
-export async function generateOrderPdf({ company, order, items, purchases = [], deliveryLocations = [] }) {
+// companyId: potreban za dovlačenje adresa lokacija preuzimanja dobavljača (SupLocations)
+export async function generateOrderPdf({ company, order, items, purchases = [], deliveryLocations = [], companyId }) {
   const JsPDF = await getJsPDF();
   const pdf = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   await registerFont(pdf);
+
+  // Adrese lokacija preuzimanja — po dobavljaču, keširano u mapu { locationId: address }
+  const pickupAddressMap = {};
+  if (companyId) {
+    const supplierIds = [...new Set(items.map((i) => i.supplierId).filter(Boolean))];
+    const locsPerSupplier = await Promise.all(supplierIds.map((sid) => getSupplierLocations(companyId, sid)));
+    locsPerSupplier.forEach((locs) => locs.forEach((l) => { pickupAddressMap[l.id] = l.address || ""; }));
+  }
 
   let y = drawCompanyHeader(pdf, company);
   y = drawOrderTitle(pdf, order, y);
@@ -334,7 +369,7 @@ export async function generateOrderPdf({ company, order, items, purchases = [], 
   items.forEach((i) => {
     (bySupplier[i.supplierId] ||= { name: i.supplierName, items: [] }).items.push(i);
   });
-  Object.values(bySupplier).forEach((group) => { y = drawSupplierSection(pdf, group, y); });
+  Object.values(bySupplier).forEach((group) => { y = drawSupplierSection(pdf, group, y, pickupAddressMap); });
 
   const currency = company?.currency || "RSD";
   const total = (purchases || []).reduce((s, p) => s + (Number(p.paidAmount) || 0), 0);

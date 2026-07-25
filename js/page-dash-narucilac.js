@@ -83,5 +83,5 @@ async function downloadOrderPdf(orderId) {
   ]);
   const order = latestOrders.find((o) => o.id === orderId);
   if (!order) { toast("Narudžbina nije pronađena.", "error"); return; }
-  await generateOrderPdf({ company, order, items, purchases, deliveryLocations });
+  await generateOrderPdf({ company, order, items, purchases, deliveryLocations, companyId: companyIdValue });
 }

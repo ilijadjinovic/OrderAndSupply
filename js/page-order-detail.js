@@ -6,6 +6,7 @@ import {
   acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, assignOrder,
 } from "./orders.js";
 import { startPurchase, finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
+import { getSupplierLocations } from "./suppliers.js";
 import { generateOrderPdf } from "./order-print.js";
 import { markLocationDelivered, confirmLocationReceipt } from "./deliveries.js";
 import { openClaim, resolveClaim, listenClaims } from "./claims.js";
@@ -28,13 +29,27 @@ if (!orderId) document.body.innerHTML = "<p style='padding:40px;'>Narudžbina ni
 let companyId, uidValue, profile, companySettings = null;
 let order = null, items = [], purchases = [], deliveryLocations = [], claims = [];
 
+// Keš adresa lokacija preuzimanja: { [pickupLocationId]: address }. Popunjava se
+// po potrebi za dobavljače koji se pojave u stavkama narudžbine (Poglavlje "Nabavke po dobavljaču").
+let pickupLocationAddresses = {};
+const fetchedSupplierIdsForPickup = new Set();
+async function ensurePickupAddresses(itemsList) {
+  const supplierIds = [...new Set(itemsList.map((i) => i.supplierId).filter(Boolean))];
+  const toFetch = supplierIds.filter((sid) => !fetchedSupplierIdsForPickup.has(sid));
+  if (!toFetch.length) return;
+  toFetch.forEach((sid) => fetchedSupplierIdsForPickup.add(sid));
+  const results = await Promise.all(toFetch.map((sid) => getSupplierLocations(companyId, sid)));
+  results.forEach((locs) => locs.forEach((l) => { pickupLocationAddresses[l.id] = l.address || ""; }));
+  renderAll();
+}
+
 requireAuth(null, (user, p) => {
   companyId = p.companyId; uidValue = user.uid; profile = p;
   renderNav({ companyId, uid: user.uid, profile });
   getCompanySettings(companyId).then((s) => { companySettings = s; renderAll(); });
 
   listenOrder(companyId, orderId, (o) => { order = o; renderAll(); });
-  listenOrderItems(companyId, orderId, (i) => { items = i; renderAll(); });
+  listenOrderItems(companyId, orderId, (i) => { items = i; renderAll(); ensurePickupAddresses(i); });
   listenOrderPurchases(companyId, orderId, (pu) => { purchases = pu; renderAll(); });
   listenDeliveryLocations(companyId, orderId, (dl) => { deliveryLocations = dl; renderAll(); });
   listenClaims(companyId, orderId, (c) => { claims = c; renderClaims(); });
@@ -196,10 +211,24 @@ function renderPurchasesPanel() {
     const supplierItems = items.filter((i) => i.supplierId === p.supplierId);
     const statusBadge = { ceka: '<span class="badge badge-gray">Čeka</span>', u_toku: '<span class="badge badge-amber">U toku</span>', zavrsena: '<span class="badge badge-teal">Završena</span>' }[p.status];
     const showControls = canWork && p.status === "u_toku";
-    return `
-      <div class="supplier-block">
-        <div class="supplier-block-head"><h3>${escapeHtml(p.supplierName)}</h3>${statusBadge}</div>
-        ${supplierItems.map((i) => `
+
+    // Grupisanje stavki po lokaciji preuzimanja (redosled po prvom pojavljivanju u narudžbini)
+    const locGroups = [];
+    const locIndex = {};
+    supplierItems.forEach((i) => {
+      const key = (i.pickupLocationId && i.pickupLocationId !== "any") ? i.pickupLocationId : "any";
+      if (!(key in locIndex)) {
+        locIndex[key] = locGroups.length;
+        locGroups.push({
+          name: key === "any" ? "Bilo koja lokacija" : (i.pickupLocationName || "Lokacija"),
+          address: key === "any" ? "" : (pickupLocationAddresses[key] || ""),
+          items: [],
+        });
+      }
+      locGroups[locIndex[key]].items.push(i);
+    });
+
+    const itemRowHtml = (i) => `
           <div class="item-row" data-item-id="${i.id}" style="grid-template-columns:1.4fr 90px 1fr auto;">
             <div>${escapeHtml(i.productName)} <span class="muted">(${i.quantity} ${escapeHtml(i.unit)})</span></div>
             <input type="number" class="purchase-qty" value="${i.purchasedQty || i.quantity}" ${showControls ? "" : "disabled"} style="${showControls ? "" : "opacity:.5;"}" />
@@ -211,8 +240,20 @@ function renderPurchasesPanel() {
                 <button class="btn btn-sm btn-outline" data-action="zamena">↺</button>
               ` : ""}
             </div>
-          </div>
-        `).join("")}
+          </div>`;
+
+    const locGroupsHtml = locGroups.map((g) => `
+        <div class="pickup-location-head" style="margin:12px 0 6px;padding-top:10px;border-top:1px dashed var(--line);">
+          <div style="font-weight:600;">📍 ${escapeHtml(g.name)}</div>
+          ${g.address ? `<div class="muted" style="font-size:12px;">${escapeHtml(g.address)}</div>` : ""}
+        </div>
+        ${g.items.map(itemRowHtml).join("")}
+    `).join("");
+
+    return `
+      <div class="supplier-block">
+        <div class="supplier-block-head"><h3>${escapeHtml(p.supplierName)}</h3>${statusBadge}</div>
+        ${locGroupsHtml}
         ${canWork && p.status === "ceka" ? `<button class="btn btn-sm btn-amber" data-start-purchase="${p.id}" style="margin-top:10px;">Počni ovu nabavku</button>` : ""}
         ${canWork && p.status === "u_toku" ? `<button class="btn btn-sm btn-primary" data-finish-purchase="${p.id}" style="margin-top:10px;">Završi ovu nabavku</button>` : ""}
         <div class="form-row payment-form" data-purchase="${p.id}" style="margin-top:12px;align-items:end;">
@@ -494,7 +535,7 @@ document.getElementById("print-pdf-btn").addEventListener("click", async (e) => 
   const original = btn.textContent;
   btn.disabled = true; btn.textContent = "Generisanje PDF-a...";
   try {
-    await generateOrderPdf({ company: companySettings, order, items, purchases, deliveryLocations });
+    await generateOrderPdf({ company: companySettings, order, items, purchases, deliveryLocations, companyId });
   } catch (err) {
     console.error(err);
     toast("Greška pri generisanju PDF-a.", "error");
