@@ -166,9 +166,22 @@ function renderDeliveryLocationOptions() {
     cb.addEventListener("change", () => {
       chosenDeliveryLocations = Array.from(host.querySelectorAll(".delivery-loc-check:checked"))
         .map((c) => ({ locationId: c.value, locationName: c.dataset.name }));
+      applyAutoDeliveryLocation();
       renderCart();
     });
   });
+}
+
+// Kada je izabrana tačno jedna lokacija isporuke, automatski je dodeli svim artiklima u listi
+// (bez potrebe za ručnim biranjem po artiklu). Kad ih ima više, ostaje ručni izbor po artiklu.
+function applyAutoDeliveryLocation() {
+  if (chosenDeliveryLocations.length === 1) {
+    const only = chosenDeliveryLocations[0];
+    cart.forEach((item) => {
+      item.deliveryLocationId = only.locationId;
+      item.deliveryLocationName = only.locationName;
+    });
+  }
 }
 
 // --- Cart rendering ---
@@ -179,6 +192,9 @@ function renderCart() {
   const bySupplier = {};
   cart.forEach((i) => { (bySupplier[i.supplierId] ||= { name: i.supplierName, items: [] }).items.push(i); });
 
+  // Kad je izabrana samo jedna lokacija isporuke, ona se automatski dodeljuje svim artiklima
+  // i ne prikazuje se poseban izbor po artiklu. Kad ih ima više, izbor po artiklu je obavezan.
+  const needsManualDeliveryPick = chosenDeliveryLocations.length > 1;
   const deliveryOptions = chosenDeliveryLocations.length
     ? chosenDeliveryLocations.map((l) => `<option value="${l.locationId}">${escapeHtml(l.locationName)}</option>`).join("")
     : `<option value="">${t("choose_delivery_location_placeholder")}</option>`;
@@ -192,7 +208,9 @@ function renderCart() {
           <input type="number" min="0.1" step="0.1" value="${item.quantity}" class="cart-qty" />
           <span class="muted">${escapeHtml(item.unit)}</span>
           <input type="text" value="${escapeHtml(item.note)}" placeholder="${t('note')}" class="cart-note" />
-          <select class="cart-delivery">${deliveryOptions}</select>
+          ${needsManualDeliveryPick
+            ? `<select class="cart-delivery">${deliveryOptions}</select>`
+            : `<span class="muted" title="${escapeHtml(item.deliveryLocationName || "")}">${escapeHtml(item.deliveryLocationName || "—")}</span>`}
           <button class="btn btn-sm btn-danger" data-remove="${item.tempId}">✕</button>
         </div>
       `).join("")}
@@ -203,14 +221,17 @@ function renderCart() {
   cart.forEach((item) => {
     const row = host.querySelector(`.item-row[data-temp-id="${item.tempId}"]`);
     if (!row) return;
-    row.querySelector(".cart-delivery").value = item.deliveryLocationId || "";
+    const deliverySelect = row.querySelector(".cart-delivery");
+    if (deliverySelect) {
+      deliverySelect.value = item.deliveryLocationId || "";
+      deliverySelect.addEventListener("change", (e) => {
+        const opt = e.target.options[e.target.selectedIndex];
+        item.deliveryLocationId = e.target.value;
+        item.deliveryLocationName = opt ? opt.textContent : "";
+      });
+    }
     row.querySelector(".cart-qty").addEventListener("input", (e) => { item.quantity = Number(e.target.value) || 0; });
     row.querySelector(".cart-note").addEventListener("input", (e) => { item.note = e.target.value; });
-    row.querySelector(".cart-delivery").addEventListener("change", (e) => {
-      const opt = e.target.options[e.target.selectedIndex];
-      item.deliveryLocationId = e.target.value;
-      item.deliveryLocationName = opt ? opt.textContent : "";
-    });
     row.querySelector("button[data-remove]").addEventListener("click", () => {
       cart = cart.filter((i) => i.tempId !== item.tempId);
       renderCart();
