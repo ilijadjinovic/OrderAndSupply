@@ -11,6 +11,7 @@ import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
   updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot,
   serverTimestamp, increment, writeBatch, Timestamp, collectionGroup,
+  runTransaction,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL, deleteObject,
@@ -28,6 +29,6 @@ export {
   signOut, sendPasswordResetEmail, updateProfile,
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, serverTimestamp, increment,
-  writeBatch, Timestamp, collectionGroup,
+  writeBatch, Timestamp, collectionGroup, runTransaction,
   ref, uploadBytes, getDownloadURL, deleteObject,
 };

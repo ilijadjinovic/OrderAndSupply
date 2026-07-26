@@ -74,6 +74,12 @@ service cloud.firestore {
         allow write: if isNarucilacOf(companyId) || isAdminOf(companyId);
       }
 
+      // --- Brojač redosleda narudžbenica (po godini), koristi se za orderNumber ---
+      match /counters/{counterId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isNarucilacOf(companyId) || isAdminOf(companyId);
+      }
+
       // --- Narudžbine + sve podkolekcije ---
       match /orders/{orderId} {
         allow read: if isCompanyMember(companyId);

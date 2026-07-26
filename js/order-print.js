@@ -384,5 +384,9 @@ export async function generateOrderPdf({ company, order, items, purchases = [], 
   drawFooter(pdf, y);
   drawPageNumbers(pdf);
 
-  pdf.save(`${t("order_form_filename_prefix")}-${order.orderNumber}.pdf`);
+  // orderNumber sada može sadržati "/" (npr. NAR-20260726-1/26), a to nije
+  // validno u nazivu fajla (browser bi ga protumačio kao poddirektorijum),
+  // pa se samo za ime fajla zamenjuje sa "-".
+  const bezbedanBroj = String(order.orderNumber).replace(/\//g, "-");
+  pdf.save(`${t("order_form_filename_prefix")}-${bezbedanBroj}.pdf`);
 }

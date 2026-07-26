@@ -4,6 +4,7 @@
 import {
   db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot,
   orderBy, where, query, limit, serverTimestamp, writeBatch, increment,
+  runTransaction,
 } from "./firebase-init.js";
 import { ORDER_STATUS, statusLabel, uid } from "./utils.js";
 import { logAudit } from "./audit.js";
@@ -43,12 +44,40 @@ async function pickAvailableIsporucilac(companyId) {
   return chosen;
 }
 
+// Format broja narudžbenice: NAR-GGGGMMDD-RB/GG
+//   GGGGMMDD = datum kreiranja (npr. 20260726)
+//   RB       = redni broj narudžbenice u tekućoj godini (kreće od 1, resetuje se 1.1.)
+//   GG       = poslednje dve cifre godine (npr. 26 za 2026.)
+// Redni broj se čuva po firmi (companyId) i po godini u dokumentu
+// companies/{companyId}/counters/orders_{godina}, a uvećava se atomski
+// preko Firestore transakcije da ne bi dve istovremene narudžbine dobile isti broj.
+async function getNextOrderNumber(companyId) {
+  const now = new Date();
+  const godina = now.getFullYear();
+  const gg = String(godina).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const datum = `${godina}${mm}${dd}`;
+
+  const counterRef = doc(db, "companies", companyId, "counters", `orders_${godina}`);
+
+  const redniBroj = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(counterRef);
+    const trenutno = snap.exists() ? (snap.data().count || 0) : 0;
+    const sledeci = trenutno + 1;
+    transaction.set(counterRef, { count: sledeci, godina, updatedAt: serverTimestamp() });
+    return sledeci;
+  });
+
+  return `NAR-${datum}-${redniBroj}/${gg}`;
+}
+
 // items: [{supplierId, supplierName, productId, productName, unit, quantity, note, priority, pickupLocationId}]
 // deliveryLocations: [{locationId, locationName, itemProductIds:[...]}]
 export async function createOrder(companyId, {
   createdByUid, createdByName, priority, items, deliveryLocations, assignmentMode, recurring = null,
 }) {
-  const orderNumber = `NAR-${Date.now().toString().slice(-8)}`;
+  const orderNumber = await getNextOrderNumber(companyId);
 
   let status = assignmentMode === "narucilac_bira" ? ORDER_STATUS.KREIRANA : ORDER_STATUS.CEKA_PRIHVATANJE;
   let assignedToUid = null, assignedToName = null;
