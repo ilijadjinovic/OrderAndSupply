@@ -122,7 +122,20 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; }
 .side-link:hover { background: var(--color-surface-2); color: var(--color-text); text-decoration: none; }
 .side-link.active { background: var(--color-primary-glow); color: var(--color-primary); }
 .side-icon { width: 18px; text-align: center; }
+.side-menu-bottom { border-top: 1px solid var(--color-border); padding-top: 8px; margin-top: 8px; }
+.side-menu-bottom .side-link { width: 100%; background: none; border: none; cursor: pointer; font-family: inherit; text-align: left; }
 .side-footer { padding: 8px; }
+.about-author { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.about-avatar {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  background: var(--color-primary); color: #fff; font-weight: 800; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+}
+.about-sep { border: none; border-top: 1px solid var(--color-border); margin: 0 0 16px; }
+.about-list { display: flex; flex-direction: column; gap: 14px; }
+.about-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--color-text); }
+.about-icon { width: 22px; text-align: center; font-size: 16px; }
+.about-row a { color: var(--color-primary); }
 .role-pill {
   display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
   text-transform: uppercase; background: var(--color-surface-2); color: var(--color-text-muted);
