@@ -51,10 +51,39 @@ export function renderNav({ companyId, uid, profile }) {
             <span data-i18n="${m.label}">${t(m.label)}</span>
           </a>`).join("")}
       </nav>
+      <div class="side-menu-bottom">
+        <button type="button" class="side-link" id="about-btn">
+          <span class="side-icon">ℹ️</span>
+          <span data-i18n="about">O aplikaciji</span>
+        </button>
+      </div>
       <div class="side-footer">
         <span class="role-pill">${roleLabel(profile.role)}</span>
       </div>
     </aside>
+    <div class="modal-overlay hidden" id="about-modal">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 data-i18n="about_title">O aplikaciji</h3>
+          <button class="icon-btn" id="about-close" aria-label="${t("close")}">✕</button>
+        </div>
+        <div class="about-author">
+          <span class="about-avatar">ИБ</span>
+          <div>
+            <strong>Ilija Đinović, d.i.e.</strong>
+            <div class="muted" data-i18n="about_author_role">Osmislio i implementirao</div>
+          </div>
+        </div>
+        <hr class="about-sep" />
+        <div class="about-list">
+          <div class="about-row"><span class="about-icon">🧠</span><span>Order &amp; Supply v1.0</span></div>
+          <div class="about-row"><span class="about-icon">🏢</span><span>Biro za veštačenja</span></div>
+          <div class="about-row"><span class="about-icon">✉️</span><span>info@bzv.rs</span></div>
+          <div class="about-row"><span class="about-icon">🌐</span><a href="https://www.bzv.rs" target="_blank" rel="noopener">www.bzv.rs</a></div>
+          <div class="about-row"><span class="about-icon">📞</span><span>+381(0)62303303</span></div>
+        </div>
+      </div>
+    </div>
     <header class="topbar">
       <button class="icon-btn" id="menu-toggle" aria-label="${t("menu_aria")}">☰</button>
       <div class="topbar-spacer"></div>
@@ -93,6 +122,13 @@ export function renderNav({ companyId, uid, profile }) {
   document.getElementById("logout-btn").addEventListener("click", () => logout());
   document.getElementById("menu-toggle").addEventListener("click", () => {
     document.querySelector(".sidebar").classList.toggle("open");
+  });
+
+  const aboutModal = document.getElementById("about-modal");
+  document.getElementById("about-btn").addEventListener("click", () => aboutModal.classList.remove("hidden"));
+  document.getElementById("about-close").addEventListener("click", () => aboutModal.classList.add("hidden"));
+  aboutModal.addEventListener("click", (e) => {
+    if (e.target === aboutModal) aboutModal.classList.add("hidden");
   });
 
   const notifBtn = document.getElementById("notif-btn");
