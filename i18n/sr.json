@@ -456,5 +456,14 @@
   "month_nov": "Novembar",
   "month_dec": "Decembar",
   "prev_month_aria": "Prethodni mesec",
-  "next_month_aria": "Sledeći mesec"
+  "next_month_aria": "Sledeći mesec",
+  "order_editable_hint": "Narudžbinu još možete menjati — nije još prihvaćena.",
+  "toast_priority_updated": "Prioritet ažuriran.",
+  "toast_item_updated": "Artikal ažuriran.",
+  "add_item_title": "Dodaj artikal",
+  "location_in_use_hint": "Bar jedan artikal ide na ovu lokaciju — prvo ga premestite.",
+  "add_delivery_location_label": "Dodaj lokaciju isporuke",
+  "toast_location_removed_from_order": "Lokacija isporuke uklonjena.",
+  "toast_location_added_to_order": "Lokacija isporuke dodata.",
+  "no_more_locations_to_add": "Nema više lokacija za dodavanje"
 }

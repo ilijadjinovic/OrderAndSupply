@@ -4,9 +4,12 @@ import { loadLang, t, currentLang } from "./i18n.js";
 import {
   listenOrder, listenOrderItems, listenOrderPurchases, listenDeliveryLocations,
   acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, assignOrder,
+  updateOrderItem, addOrderItem, updateOrderPriority, addOrderDeliveryLocation, removeOrderDeliveryLocation,
 } from "./orders.js";
 import { startPurchase, finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
 import { getSupplierLocations } from "./suppliers.js";
+import { getProducts, smartSearch } from "./catalog.js";
+import { getLocations } from "./locations.js";
 import { generateOrderPdf } from "./order-print.js";
 import { markLocationDelivered, confirmLocationReceipt } from "./deliveries.js";
 import { openClaim, resolveClaim, listenClaims } from "./claims.js";
@@ -28,6 +31,20 @@ if (!orderId) document.body.innerHTML = `<p style='padding:40px;'>${t("order_not
 
 let companyId, uidValue, profile, companySettings = null;
 let order = null, items = [], purchases = [], deliveryLocations = [], claims = [];
+
+// Za editovanje narudžbine dok nije prihvaćena (Poglavlje 2.3, "ozbiljan edit svega"):
+// keš proizvoda po dobavljaču (za "Dodaj artikal iz kataloga") i lista lokacija firme
+// (za dodavanje novih lokacija isporuke). Učitavaju se lenjo, samo kad zatreba.
+let companyLocationsCache = null;
+const supplierProductsCache = {};
+async function getSupplierProductsCached(supplierId) {
+  if (!supplierProductsCache[supplierId]) supplierProductsCache[supplierId] = await getProducts(companyId, supplierId);
+  return supplierProductsCache[supplierId];
+}
+async function getCompanyLocationsCached() {
+  if (!companyLocationsCache) companyLocationsCache = await getLocations(companyId);
+  return companyLocationsCache;
+}
 
 // Keš adresa lokacija preuzimanja: { [pickupLocationId]: address }. Popunjava se
 // po potrebi za dobavljače koji se pojave u stavkama narudžbine (Poglavlje "Nabavke po dobavljaču").
@@ -61,6 +78,13 @@ requireAuth(null, (user, p) => {
   }
 });
 
+// Naručilac sme ozbiljno da menja svoju narudžbinu (stavke, prioritet, lokacije
+// isporuke) sve dok je nije prihvaćena — Poglavlje 2.3.
+function canEditOrder() {
+  return profile.role === "narucilac" && order.createdByUid === uidValue
+    && [ORDER_STATUS.KREIRANA, ORDER_STATUS.CEKA_PRIHVATANJE].includes(order.status);
+}
+
 function renderAll() {
   if (!order) return;
   renderHeader();
@@ -77,13 +101,27 @@ function renderAll() {
 // ---------------------------------------------------------------- HEADER
 function renderHeader() {
   document.getElementById("order-number").textContent = order.orderNumber;
+  const editable = canEditOrder();
+  const priorityHtml = editable
+    ? `<select id="priority-edit-select" class="priority-inline-select">
+        <option value="standardno" ${order.priority !== "hitno" ? "selected" : ""}>${t("standard")}</option>
+        <option value="hitno" ${order.priority === "hitno" ? "selected" : ""}>${t("urgent")}</option>
+      </select>`
+    : (order.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`);
+
   document.getElementById("order-meta").innerHTML = `
     ${t("role_narucilac")}: <strong>${escapeHtml(order.createdByName || "—")}</strong> ·
     ${t("role_isporucilac")}: <strong>${escapeHtml(order.assignedToName || t("not_assigned"))}</strong> ·
-    ${order.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`}
+    ${priorityHtml}
     <span class="badge ${badgeClassForStatus(order.status)}">${statusLabel(order.status)}</span> ·
     ${t("created_label")} ${formatDate(order.createdAt)}
+    ${editable ? `<span class="muted" style="display:block;margin-top:4px;font-size:12px;">✎ ${t("order_editable_hint")}</span>` : ""}
   `;
+
+  document.getElementById("priority-edit-select")?.addEventListener("change", async (e) => {
+    await updateOrderPriority(companyId, orderId, e.target.value, { actorUid: uidValue, actorName: profile.name });
+    toast(t("toast_priority_updated"), "success");
+  });
 }
 
 // ---------------------------------------------------------------- STATUS TRACK
@@ -164,8 +202,12 @@ function renderActionBar() {
 // ---------------------------------------------------------------- ITEMS TABLE
 function renderItemsTable() {
   const body = document.getElementById("items-body");
-  if (!items.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_items")}</td></tr>`; return; }
-  const canEdit = profile.role === "narucilac" && order.createdByUid === uidValue && [ORDER_STATUS.KREIRANA, ORDER_STATUS.CEKA_PRIHVATANJE].includes(order.status);
+  const canEdit = canEditOrder();
+  if (!items.length && !canEdit) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_items")}</td></tr>`;
+    renderAddItemPanel(canEdit);
+    return;
+  }
 
   const statusBadge = (st) => ({
     na_cekanju: `<span class="badge badge-gray">${t("item_status_pending")}</span>`,
@@ -174,19 +216,34 @@ function renderItemsTable() {
     zamena: `<span class="badge badge-amber">↺ ${t("substitution")}</span>`,
   }[st] || st);
 
-  body.innerHTML = items.map((i) => `
-    <tr>
+  // Kad je editovanje moguće, "Isporuka" postaje <select> sa svim trenutnim lokacijama
+  // isporuke narudžbine (+ "bilo koja lokacija"), a količina i napomena postaju polja
+  // za unos koja se čuvaju odmah na promenu (blur/change) — Poglavlje 2.3.
+  const deliveryOptionsHtml = (selectedId) => {
+    const opts = [`<option value="any" ${!selectedId || selectedId === "any" ? "selected" : ""}>${t("any_location")}</option>`]
+      .concat(deliveryLocations.map((l) => `<option value="${l.id}" data-name="${escapeHtml(l.locationName)}" ${selectedId === l.id ? "selected" : ""}>${escapeHtml(l.locationName)}</option>`));
+    return opts.join("");
+  };
+
+  body.innerHTML = (items.length ? items : [null]).filter(Boolean).map((i) => `
+    <tr data-item-id="${i.id}">
       <td><strong>${escapeHtml(i.productName)}</strong></td>
       <td>${escapeHtml(i.supplierName)}</td>
       <td>${i.pickupLocationId && i.pickupLocationId !== "any" ? escapeHtml(i.pickupLocationName || "—") : "—"}</td>
-      <td>${i.quantity} ${escapeHtml(i.unit)}</td>
-      <td>${escapeHtml(i.deliveryLocationName || "—")}</td>
-      <td class="muted">${escapeHtml(i.note || "—")}</td>
+      <td>${canEdit
+        ? `<input type="number" min="1" step="1" class="edit-item-qty mono" style="width:70px;" value="${i.quantity}" /> ${escapeHtml(i.unit)}`
+        : `${i.quantity} ${escapeHtml(i.unit)}`}</td>
+      <td>${canEdit
+        ? `<select class="edit-item-delivery">${deliveryOptionsHtml(i.deliveryLocationId)}</select>`
+        : escapeHtml(i.deliveryLocationName || "—")}</td>
+      <td class="muted">${canEdit
+        ? `<input type="text" class="edit-item-note" style="width:130px;" value="${escapeHtml(i.note || "")}" placeholder="${t("note")}" />`
+        : escapeHtml(i.note || "—")}</td>
       <td>${statusBadge(i.purchaseStatus)} ${i.substituteName ? `<div class="muted" style="font-size:11px;">${escapeHtml(i.substituteName)}</div>` : ""}
         ${canEdit ? `<button class="btn btn-sm btn-ghost" data-remove="${i.id}">✕ ${t("remove")}</button>` : ""}
       </td>
     </tr>
-  `).join("");
+  `).join("") || `<tr class="empty-row"><td colspan="7">${t("no_items")}</td></tr>`;
 
   body.querySelectorAll("button[data-remove]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -194,6 +251,131 @@ function renderItemsTable() {
       toast(t("toast_item_removed"), "success");
     });
   });
+
+  if (canEdit) {
+    body.querySelectorAll("tr[data-item-id]").forEach((row) => {
+      const itemId = row.dataset.itemId;
+      row.querySelector(".edit-item-qty")?.addEventListener("change", async (e) => {
+        const qty = Math.max(1, Number(e.target.value) || 1);
+        e.target.value = qty;
+        await updateOrderItem(companyId, orderId, itemId, { quantity: qty });
+        toast(t("toast_item_updated"), "success");
+      });
+      row.querySelector(".edit-item-note")?.addEventListener("blur", async (e) => {
+        await updateOrderItem(companyId, orderId, itemId, { note: e.target.value.trim() });
+        toast(t("toast_item_updated"), "success");
+      });
+      row.querySelector(".edit-item-delivery")?.addEventListener("change", async (e) => {
+        const opt = e.target.options[e.target.selectedIndex];
+        const deliveryLocationId = opt.value;
+        const deliveryLocationName = deliveryLocationId === "any" ? t("any_location") : opt.dataset.name;
+        await updateOrderItem(companyId, orderId, itemId, { deliveryLocationId, deliveryLocationName });
+        toast(t("toast_item_updated"), "success");
+      });
+    });
+  }
+
+  renderAddItemPanel(canEdit);
+}
+
+// ---------------------------------------------------------------- DODAJ ARTIKAL (dok narudžbina nije prihvaćena)
+// Dozvoljeno je dodavanje samo za dobavljače koji su već deo narudžbine (imaju
+// svoj red u "purchases"), jer se stavke grupišu po dobavljaču/nabavci — za
+// potpuno novog dobavljača treba nova narudžbina.
+function renderAddItemPanel(canEdit) {
+  const host = document.getElementById("add-item-panel");
+  if (!host) return;
+  if (!canEdit || !purchases.length) { host.innerHTML = ""; return; }
+
+  host.innerHTML = `
+    <div class="panel-head" style="margin-top:18px;"><h3 style="margin:0;">${t("add_item_title")}</h3></div>
+    <div class="form-row" style="align-items:end;">
+      <div class="field"><label>${t("supplier")}</label>
+        <select id="ai-supplier">${purchases.map((p) => `<option value="${p.supplierId}" data-name="${escapeHtml(p.supplierName)}">${escapeHtml(p.supplierName)}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label>${t("delivery_label")}</label>
+        <select id="ai-delivery">${[`<option value="any">${t("any_location")}</option>`].concat(deliveryLocations.map((l) => `<option value="${l.id}" data-name="${escapeHtml(l.locationName)}">${escapeHtml(l.locationName)}</option>`)).join("")}</select>
+      </div>
+    </div>
+    <div class="tabs" style="margin-top:10px;">
+      <button type="button" class="tab-btn active" data-ai-mode="catalog">${t("tab_from_catalog")}</button>
+      <button type="button" class="tab-btn" data-ai-mode="manual">${t("tab_manual_entry")}</button>
+    </div>
+    <div id="ai-catalog-mode">
+      <div class="field" style="max-width:320px;margin-top:10px;"><label>${t("search")}</label><input type="text" id="ai-search" placeholder="${t("type_product_name_placeholder")}" /></div>
+      <div class="table-wrap" style="max-height:220px;overflow:auto;">
+        <table class="data-table"><tbody id="ai-product-list"></tbody></table>
+      </div>
+    </div>
+    <div id="ai-manual-mode" class="hidden" style="margin-top:10px;">
+      <div class="form-row" style="align-items:end;">
+        <div class="field"><label>${t("item_name_label")}</label><input type="text" id="ai-manual-name" /></div>
+        <div class="field" style="max-width:100px;"><label>${t("quantity")}</label><input type="number" id="ai-manual-qty" min="1" value="1" /></div>
+        <div class="field" style="max-width:100px;"><label>${t("unit")}</label><input type="text" id="ai-manual-unit" value="kom" /></div>
+      </div>
+      <button type="button" class="btn btn-sm btn-amber" id="ai-manual-add-btn" style="margin-top:6px;">${t("add_to_list_btn")}</button>
+    </div>
+  `;
+
+  const supplierSelect = document.getElementById("ai-supplier");
+  const deliverySelect = document.getElementById("ai-delivery");
+  const searchInput = document.getElementById("ai-search");
+  const productListBody = document.getElementById("ai-product-list");
+
+  async function renderProductList() {
+    const supplierId = supplierSelect.value;
+    const products = await getSupplierProductsCached(supplierId);
+    const filtered = smartSearch(products, searchInput.value);
+    if (!filtered.length) { productListBody.innerHTML = `<tr class="empty-row"><td>${t("no_products_for_query")}</td></tr>`; return; }
+    productListBody.innerHTML = filtered.slice(0, 30).map((p) => `
+      <tr>
+        <td>${escapeHtml(p.name)} <span class="muted">(${escapeHtml(p.unit)})</span></td>
+        <td style="width:90px;"><input type="number" class="ai-add-qty mono" min="1" value="1" style="width:70px;" /></td>
+        <td style="width:100px;"><button type="button" class="btn btn-sm btn-amber" data-add-product="${p.id}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}">+ ${t("add")}</button></td>
+      </tr>
+    `).join("");
+    productListBody.querySelectorAll("button[data-add-product]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest("tr");
+        const qty = Math.max(1, Number(row.querySelector(".ai-add-qty").value) || 1);
+        await submitNewItem({ productId: btn.dataset.addProduct, productName: btn.dataset.name, unit: btn.dataset.unit, quantity: qty, note: "" });
+      });
+    });
+  }
+
+  supplierSelect.addEventListener("change", renderProductList);
+  searchInput.addEventListener("input", renderProductList);
+  renderProductList();
+
+  host.querySelectorAll("button[data-ai-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      host.querySelectorAll("button[data-ai-mode]").forEach((b) => b.classList.toggle("active", b === btn));
+      document.getElementById("ai-catalog-mode").classList.toggle("hidden", btn.dataset.aiMode !== "catalog");
+      document.getElementById("ai-manual-mode").classList.toggle("hidden", btn.dataset.aiMode !== "manual");
+    });
+  });
+
+  document.getElementById("ai-manual-add-btn").addEventListener("click", async () => {
+    const name = document.getElementById("ai-manual-name").value.trim();
+    const qty = Math.max(1, Number(document.getElementById("ai-manual-qty").value) || 1);
+    const unit = document.getElementById("ai-manual-unit").value.trim() || "kom";
+    if (!name) { toast(t("toast_enter_item_name"), "error"); return; }
+    await submitNewItem({ productId: "", productName: name, unit, quantity: qty, note: "", manualEntry: true });
+    document.getElementById("ai-manual-name").value = "";
+    document.getElementById("ai-manual-qty").value = 1;
+  });
+
+  async function submitNewItem({ productId, productName, unit, quantity, note, manualEntry = false }) {
+    const supplierOpt = supplierSelect.options[supplierSelect.selectedIndex];
+    const deliveryOpt = deliverySelect.options[deliverySelect.selectedIndex];
+    await addOrderItem(companyId, orderId, {
+      supplierId: supplierSelect.value, supplierName: supplierOpt.dataset.name,
+      productId, productName, unit, quantity, note, manualEntry,
+      pickupLocationId: "any", pickupLocationName: t("any_location"),
+      deliveryLocationId: deliveryOpt.value, deliveryLocationName: deliveryOpt.value === "any" ? t("any_location") : deliveryOpt.dataset.name,
+    });
+    toast(t("toast_item_added", { name: productName }), "success");
+  }
 }
 
 // ---------------------------------------------------------------- PURCHASES PANEL (Poglavlje 4.3, 5.1)
@@ -363,25 +545,64 @@ function formatDateShort2(isoDateStr) {
 // ---------------------------------------------------------------- DELIVERY PANEL (Poglavlje 5.2)
 function renderDeliveryPanel() {
   const panel = document.getElementById("delivery-panel");
-  if (!deliveryLocations.length) { panel.innerHTML = ""; return; }
+  const canEdit = canEditOrder();
+  if (!deliveryLocations.length && !canEdit) { panel.innerHTML = ""; return; }
   const isDeliverer = profile.role === "isporucilac" && order.assignedToUid === uidValue && order.status === ORDER_STATUS.U_ISPORUCI;
-  const isOrderer = profile.role === "narucilac" && order.createdByUid === uidValue;
 
   const statusBadge = { ceka: `<span class="badge badge-gray">${t("delivery_status_waiting")}</span>`, isporuceno: `<span class="badge badge-amber">${t("delivery_status_delivered")}</span>`, potvrdjeno: `<span class="badge badge-teal">${t("delivery_status_confirmed")}</span>` };
 
-  panel.innerHTML = `<div class="panel-head"><h2>${t("delivery_locations_title")}</h2></div>` + deliveryLocations.map((l) => `
+  // Lokacija se sme ukloniti samo ako nijedan artikal trenutno ne ide na nju —
+  // u suprotnom bi ostala "siroče" referenca u stavkama (Poglavlje 2.3).
+  const rowsHtml = deliveryLocations.map((l) => {
+    const inUse = items.some((i) => i.deliveryLocationId === l.id);
+    return `
     <div class="item-row" data-loc-id="${l.id}" style="grid-template-columns:1.6fr 1fr auto;">
       <div><strong>${escapeHtml(l.locationName)}</strong></div>
       <div>${statusBadge[l.status]}</div>
       <div>
         ${isDeliverer && l.status === "ceka" ? `<button class="btn btn-sm btn-amber" data-deliver="${l.id}">${t("mark_delivered_btn")}</button>` : ""}
+        ${canEdit ? `<button class="btn btn-sm btn-ghost" data-remove-loc="${l.id}" ${inUse ? "disabled title=\"" + escapeHtml(t("location_in_use_hint")) + "\"" : ""}>✕ ${t("remove")}</button>` : ""}
       </div>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
+
+  const addLocHtml = canEdit ? `<div id="add-delivery-location-row" class="form-row" style="align-items:end;margin-top:12px;">
+      <div class="field" style="max-width:260px;"><label>${t("add_delivery_location_label")}</label><select id="new-delivery-loc"></select></div>
+      <button type="button" class="btn btn-sm btn-amber" id="add-delivery-loc-btn">+ ${t("add")}</button>
+    </div>` : "";
+
+  panel.innerHTML = `<div class="panel-head"><h2>${t("delivery_locations_title")}</h2></div>${rowsHtml}${addLocHtml}`;
 
   panel.querySelectorAll("button[data-deliver]").forEach((btn) => {
     btn.addEventListener("click", () => markLocationDelivered(companyId, orderId, btn.dataset.deliver, profile.name));
   });
+  panel.querySelectorAll("button[data-remove-loc]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await removeOrderDeliveryLocation(companyId, orderId, btn.dataset.removeLoc);
+      toast(t("toast_location_removed_from_order"), "success");
+    });
+  });
+
+  if (canEdit) {
+    getCompanyLocationsCached().then((companyLocs) => {
+      const sel = document.getElementById("new-delivery-loc");
+      if (!sel) return;
+      const alreadyAdded = new Set(deliveryLocations.map((l) => l.locationId));
+      const available = companyLocs.filter((l) => !alreadyAdded.has(l.id));
+      if (!available.length) {
+        sel.innerHTML = `<option value="">${t("no_more_locations_to_add")}</option>`;
+        document.getElementById("add-delivery-loc-btn").disabled = true;
+        return;
+      }
+      sel.innerHTML = available.map((l) => `<option value="${l.id}" data-name="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join("");
+      document.getElementById("add-delivery-loc-btn").addEventListener("click", async () => {
+        const opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) return;
+        await addOrderDeliveryLocation(companyId, orderId, { locationId: opt.value, locationName: opt.dataset.name });
+        toast(t("toast_location_added_to_order"), "success");
+      });
+    });
+  }
 }
 
 // ---------------------------------------------------------------- RECEIPT PANEL (Poglavlje 6)

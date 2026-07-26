@@ -3,7 +3,7 @@
 // ============================================================================
 import {
   db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot,
-  orderBy, where, query, limit, serverTimestamp, writeBatch,
+  orderBy, where, query, limit, serverTimestamp, writeBatch, increment,
 } from "./firebase-init.js";
 import { ORDER_STATUS, statusLabel, uid } from "./utils.js";
 import { logAudit } from "./audit.js";
@@ -188,14 +188,37 @@ export async function setOrderStatus(companyId, orderId, status, { actorName, ac
 }
 
 // --- Naručilac menja narudžbinu dok nije prihvaćena (Poglavlje 2.3) ---
+// Napomena: sve funkcije ispod su namerno dozvoljene samo dok je status
+// KREIRANA ili CEKA_PRIHVATANJE — tu proveru radi UI (page-order-detail.js,
+// canEdit), isto kao i za ostale akcije u ovom fajlu (assign/accept/reject...).
+// Ovde se doda i itemCount na narudžbini ažurira pri svakoj izmeni broja
+// stavki, jer se on koristi u izveštajima (Poglavlje "Broj artikala").
 export async function updateOrderItem(companyId, orderId, itemId, data) {
   return updateDoc(doc(db, "companies", companyId, "orders", orderId, "items", itemId), data);
 }
 export async function deleteOrderItem(companyId, orderId, itemId) {
-  return deleteDoc(doc(db, "companies", companyId, "orders", orderId, "items", itemId));
+  await deleteDoc(doc(db, "companies", companyId, "orders", orderId, "items", itemId));
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { itemCount: increment(-1), updatedAt: serverTimestamp() });
 }
 export async function addOrderItem(companyId, orderId, item) {
-  return addDoc(itemsCol(companyId, orderId), { ...item, purchaseStatus: "na_cekanju", purchasedQty: 0, createdAt: serverTimestamp() });
+  const ref = await addDoc(itemsCol(companyId, orderId), { ...item, purchaseStatus: "na_cekanju", purchasedQty: 0, substituteName: "", createdAt: serverTimestamp() });
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { itemCount: increment(1), updatedAt: serverTimestamp() });
+  return ref.id;
+}
+
+// --- Prioritet narudžbine — narucilac može promeniti dok nije prihvaćena ---
+export async function updateOrderPriority(companyId, orderId, priority, { actorUid, actorName } = {}) {
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { priority, updatedAt: serverTimestamp() });
+  await logAudit(companyId, { action: "order_priority_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: priority });
+}
+
+// --- Lokacije isporuke narudžbine — dodavanje/uklanjanje dok nije prihvaćena ---
+export async function addOrderDeliveryLocation(companyId, orderId, { locationId, locationName }) {
+  const ref = await addDoc(deliveryLocCol(companyId, orderId), { locationId, locationName, status: "ceka", createdAt: serverTimestamp() });
+  return ref.id;
+}
+export async function removeOrderDeliveryLocation(companyId, orderId, locId) {
+  return deleteDoc(doc(db, "companies", companyId, "orders", orderId, "deliveryLocations", locId));
 }
 
 // --- Potvrda prijema + auto-prenos nedostajuće robe u sledeću nabavku (Poglavlje 6) ---

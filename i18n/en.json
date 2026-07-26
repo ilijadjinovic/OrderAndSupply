@@ -456,5 +456,14 @@
   "month_nov": "November",
   "month_dec": "December",
   "prev_month_aria": "Previous month",
-  "next_month_aria": "Next month"
+  "next_month_aria": "Next month",
+  "order_editable_hint": "You can still edit this order — it hasn't been accepted yet.",
+  "toast_priority_updated": "Priority updated.",
+  "toast_item_updated": "Item updated.",
+  "add_item_title": "Add an item",
+  "location_in_use_hint": "At least one item is going to this location — reassign it first.",
+  "add_delivery_location_label": "Add a delivery location",
+  "toast_location_removed_from_order": "Delivery location removed.",
+  "toast_location_added_to_order": "Delivery location added.",
+  "no_more_locations_to_add": "No more locations to add"
 }
