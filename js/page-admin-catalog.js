@@ -13,12 +13,6 @@ requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], async (user, profile) => {
   currentUid = user.uid; currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
 
-  // Kategorije su admin-only (vidi firestore.rules) — naručilac ne vidi taj tab.
-  if (currentRole !== ROLES.ADMIN) {
-    document.querySelector('.tab-btn[data-tab="categories"]')?.classList.add("hidden");
-    document.getElementById("tab-categories")?.classList.add("hidden");
-  }
-
   categories = await getCategories(companyId);
   renderCategories(categories);
   fillCategorySelect();
@@ -124,8 +118,9 @@ document.getElementById("product-form").addEventListener("submit", async (e) => 
 });
 
 function renderCategories(cats) {
+  const isAdmin = currentRole === ROLES.ADMIN;
   document.getElementById("categories-body").innerHTML = cats.length
-    ? cats.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td><button class="btn btn-sm btn-danger" data-id="${c.id}">${t("delete")}</button></td></tr>`).join("")
+    ? cats.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td>${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${c.id}">${t("delete")}</button>` : ""}</td></tr>`).join("")
     : `<tr class="empty-row"><td colspan="2">${t("no_categories")}</td></tr>`;
   document.querySelectorAll("#categories-body button[data-id]").forEach((btn) => {
     btn.addEventListener("click", async () => {

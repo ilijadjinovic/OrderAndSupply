@@ -15,7 +15,6 @@ const MENUS = {
     { href: "admin-users.html", label: "users", icon: "👥" },
     { href: "admin-locations.html", label: "locations", icon: "📍" },
     { href: "admin-suppliers.html", label: "suppliers", icon: "🚚" },
-    { href: "admin-catalog.html", label: "catalog", icon: "📦" },
     { href: "admin-reports.html", label: "reports", icon: "📈" },
     { href: "admin-import-export.html", label: "import_export", icon: "⇅" },
     { href: "admin-settings.html", label: "settings", icon: "⚙️" },
@@ -25,7 +24,6 @@ const MENUS = {
     { href: "new-order.html", label: "new_order", icon: "➕" },
     { href: "templates.html", label: "templates", icon: "🗂️" },
     { href: "admin-suppliers.html", label: "suppliers", icon: "🚚" },
-    { href: "admin-catalog.html", label: "catalog", icon: "📦" },
   ],
   isporucilac: [
     { href: "isporucilac-dashboard.html", label: "dashboard", icon: "📊" },

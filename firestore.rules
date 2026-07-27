@@ -47,10 +47,11 @@ service cloud.firestore {
         allow write: if isAdminOf(companyId);
       }
 
-      // --- Kategorije ---
+      // --- Kategorije (naručilac sme samo da dodaje, briše samo admin) ---
       match /categories/{catId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdminOf(companyId);
+        allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
+        allow update, delete: if isAdminOf(companyId);
       }
 
       // --- Dobavljači + podkolekcije (lokacije, proizvodi) ---
