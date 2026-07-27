@@ -410,19 +410,22 @@ function renderPurchasesPanel() {
       locGroups[locIndex[key]].items.push(i);
     });
 
-    const itemRowHtml = (i) => `
+    const itemRowHtml = (i) => {
+      const statusLine = { kupljeno: `<div class="item-purchase-status-line st-kupljeno">✅ ${t("item_status_purchased")}</div>`, nije_pronadjeno: `<div class="item-purchase-status-line st-nije">❌ ${t("item_status_not_found")}</div>`, zamena: `<div class="item-purchase-status-line st-zamena">↺ ${t("substitution")}</div>` }[i.purchaseStatus] || "";
+      return `
           <div class="item-row" data-item-id="${i.id}" style="grid-template-columns:1.4fr 90px 1fr auto;">
-            <div>${escapeHtml(i.productName)} <span class="muted">(${i.quantity} ${escapeHtml(i.unit)})</span></div>
+            <div>${escapeHtml(i.productName)} <span class="muted">(${i.quantity} ${escapeHtml(i.unit)})</span>${statusLine}</div>
             <input type="number" class="purchase-qty" value="${i.purchasedQty || i.quantity}" ${showControls ? "" : "disabled"} style="${showControls ? "" : "opacity:.5;"}" />
             <input type="text" class="purchase-substitute" placeholder="${t('substitute_name_placeholder')}" value="${escapeHtml(i.substituteName || "")}" ${showControls ? "" : "disabled"} style="${showControls ? "" : "opacity:.5;"}" />
             <div style="display:flex;gap:4px;">
               ${showControls ? `
-                <button class="btn btn-sm btn-outline" data-action="kupljeno">✅</button>
-                <button class="btn btn-sm btn-outline" data-action="nije">❌</button>
-                <button class="btn btn-sm btn-outline" data-action="zamena">↺</button>
+                <button class="btn btn-sm btn-outline purchase-action-btn ${i.purchaseStatus === "kupljeno" ? "is-active" : ""}" data-action="kupljeno" title="${t("item_status_purchased")}">✅</button>
+                <button class="btn btn-sm btn-outline purchase-action-btn ${i.purchaseStatus === "nije_pronadjeno" ? "is-active" : ""}" data-action="nije" title="${t("item_status_not_found")}">❌</button>
+                <button class="btn btn-sm btn-outline purchase-action-btn ${i.purchaseStatus === "zamena" ? "is-active" : ""}" data-action="zamena" title="${t("substitution")}">↺</button>
               ` : ""}
             </div>
           </div>`;
+    };
 
     const locGroupsHtml = locGroups.map((g) => `
         <div class="pickup-location-head" style="margin:12px 0 6px;padding-top:10px;border-top:1px dashed var(--line);">

@@ -58,6 +58,18 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 
 /* ---- Item list / cart (nova narudžbina) ---- */
 .supplier-block { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px; margin-bottom: 14px; }
+
+/* ---- Dugmići za status stavke u nabavci (kupljeno/nije/zamena) — vizuelno istaknuto stanje ---- */
+.item-row .purchase-action-btn { position: relative; opacity: .55; transition: all .12s ease; }
+.item-row .purchase-action-btn:hover { opacity: 1; }
+.item-row .purchase-action-btn.is-active { opacity: 1; font-weight: 700; }
+.item-row .purchase-action-btn.is-active[data-action="kupljeno"] { border-color: var(--accent-teal); background: var(--accent-teal-100); color: var(--accent-teal); box-shadow: 0 0 0 1px var(--accent-teal); }
+.item-row .purchase-action-btn.is-active[data-action="nije"] { border-color: var(--accent-red); background: var(--accent-red-100); color: var(--accent-red); box-shadow: 0 0 0 1px var(--accent-red); }
+.item-row .purchase-action-btn.is-active[data-action="zamena"] { border-color: var(--accent-amber); background: var(--accent-amber-100); color: #8a4c11; box-shadow: 0 0 0 1px var(--accent-amber); }
+.item-row .item-purchase-status-line { font-size: 11px; font-weight: 700; margin-top: 2px; }
+.item-row .item-purchase-status-line.st-kupljeno { color: var(--accent-teal); }
+.item-row .item-purchase-status-line.st-nije { color: var(--accent-red); }
+.item-row .item-purchase-status-line.st-zamena { color: #8a4c11; }
 .supplier-block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .item-row { display: grid; grid-template-columns: 1.6fr 90px 110px 1fr 90px auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--ink-100); }
 .item-row:last-child { border-bottom: none; }
