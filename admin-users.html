@@ -50,6 +50,17 @@
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="user-details-modal">
+  <div class="modal-card">
+    <div class="modal-head"><h2 data-i18n="details_label">Detalji</h2><button class="icon-btn" id="close-user-details-modal">✕</button></div>
+    <div class="field"><label data-i18n="full_name_label">Ime i prezime</label><input type="text" id="ud-name" disabled /></div>
+    <div class="field"><label>Email</label><input type="text" id="ud-email" disabled /></div>
+    <div class="field"><label data-i18n="role_label">Uloga</label><input type="text" id="ud-role" disabled /></div>
+    <div class="field"><label data-i18n="status">Status</label><input type="text" id="ud-status" disabled /></div>
+    <div class="field"><label data-i18n="created_date_label">Datum kreiranja</label><input type="text" id="ud-created" disabled /></div>
+  </div>
+</div>
+
 <script type="module" src="./js/page-admin-users.js"></script>
 </body>
 </html>

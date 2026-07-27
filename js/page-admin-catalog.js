@@ -44,7 +44,7 @@ function renderProducts(products, supplierId) {
   if (!products.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_products_for_supplier")}</td></tr>`; return; }
   body.innerHTML = products.map((p) => {
     const catName = categories.find((c) => c.id === p.categoryId)?.name || "—";
-    return `<tr>
+    return `<tr class="row-link" data-id="${p.id}" title="${t("details_label")}">
       <td><strong>${escapeHtml(p.name)}</strong></td>
       <td class="mono">${escapeHtml(p.code || "—")}</td>
       <td>${escapeHtml(p.unit)}</td>
@@ -55,11 +55,44 @@ function renderProducts(products, supplierId) {
     </tr>`;
   }).join("");
   body.querySelectorAll("button[data-id]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       await deleteProduct(companyId, btn.dataset.supplier, btn.dataset.id);
       toast(t("toast_product_deleted"), "success");
     });
   });
+
+  // Klik bilo gde na redu (van dugmeta za brisanje) otvara detalje proizvoda —
+  // uključujući polja koja se ne prikazuju direktno u tabeli (npr. barkod).
+  body.querySelectorAll("tr.row-link").forEach((row) => {
+    row.addEventListener("click", () => {
+      const product = products.find((x) => x.id === row.dataset.id);
+      if (product) openProductDetail(product);
+    });
+  });
+}
+
+const productDetailModal = document.getElementById("product-detail-modal");
+document.getElementById("close-product-detail-modal").addEventListener("click", () => productDetailModal.classList.add("hidden"));
+
+function detailRow(label, value, mono = false) {
+  const safe = (value === undefined || value === null || value === "") ? "—" : escapeHtml(String(value));
+  return `<div class="detail-row"><dt>${escapeHtml(label)}</dt><dd${mono ? ' class="mono"' : ""}>${safe}</dd></div>`;
+}
+
+function openProductDetail(product) {
+  const catName = categories.find((c) => c.id === product.categoryId)?.name || "—";
+  document.getElementById("product-detail-title").textContent = product.name;
+  document.getElementById("product-detail-body").innerHTML = [
+    detailRow(t("name"), product.name),
+    detailRow(t("code"), product.code, true),
+    detailRow(t("barcode"), product.barcode, true),
+    detailRow(t("unit"), product.unit),
+    detailRow(t("category"), catName),
+    detailRow(t("vat_rate"), product.vatRate != null ? `${product.vatRate}%` : null),
+    detailRow(t("min_quantity"), product.minQuantity),
+  ].join("");
+  productDetailModal.classList.remove("hidden");
 }
 
 function fillCategorySelect() {

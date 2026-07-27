@@ -21,7 +21,7 @@ function render(suppliers) {
   body.innerHTML = suppliers.map((s) => {
     const canEdit = isAdmin || s.createdBy === currentUid;
     return `
-    <tr>
+    <tr class="row-link" data-id="${s.id}" title="${t("details_label")}">
       <td><strong>${escapeHtml(s.name)}</strong></td>
       <td class="mono">${escapeHtml(s.pib || "—")}</td>
       <td>${escapeHtml(s.contact || "—")}</td>
@@ -38,26 +38,46 @@ function render(suppliers) {
   }).join("");
 
   body.querySelectorAll("button[data-action=delete]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       if (!confirm(t("confirm_delete_supplier"))) return;
       await deleteSupplier(companyId, btn.dataset.id);
       toast(t("toast_supplier_deleted"), "success");
     });
   });
   body.querySelectorAll("button[data-action=locations]").forEach((btn) => {
-    btn.addEventListener("click", () => openLocations(btn.dataset.id, btn.dataset.name));
+    btn.addEventListener("click", (e) => { e.stopPropagation(); openLocations(btn.dataset.id, btn.dataset.name); });
   });
   body.querySelectorAll("button[data-action=edit]").forEach((btn) => {
-    btn.addEventListener("click", () => openSupplierModal(suppliers.find((s) => s.id === btn.dataset.id)));
+    btn.addEventListener("click", (e) => { e.stopPropagation(); openSupplierModal(suppliers.find((s) => s.id === btn.dataset.id), true); });
+  });
+  body.querySelectorAll("a").forEach((a) => a.addEventListener("click", (e) => e.stopPropagation()));
+
+  // Klik bilo gde na redu (van dugmadi/linkova) otvara detalje dobavljača.
+  // Ako korisnik sme da menja (admin ili tvorac zapisa), otvara se u formi za izmenu;
+  // u suprotnom se prikazuju detalji samo za čitanje.
+  body.querySelectorAll("tr.row-link").forEach((row) => {
+    row.addEventListener("click", () => {
+      const supplier = suppliers.find((s) => s.id === row.dataset.id);
+      if (!supplier) return;
+      const canEdit = isAdmin || supplier.createdBy === currentUid;
+      openSupplierModal(supplier, canEdit);
+    });
   });
 }
 
 let activeEditId = null;
 const supplierModal = document.getElementById("supplier-modal");
 
-function openSupplierModal(supplier = null) {
+const supplierFieldIds = ["s-name", "s-pib", "s-maticni", "s-address", "s-bank", "s-contact", "s-phone", "s-email", "s-hours", "s-note"];
+const supplierSaveBtn = document.querySelector("#supplier-form button[type=submit]");
+
+function openSupplierModal(supplier = null, editable = true) {
   activeEditId = supplier?.id || null;
-  document.getElementById("supplier-modal-title").textContent = supplier ? `${t("edit_supplier_title")} — ${supplier.name}` : t("new_supplier_title");
+  const isDetailsOnly = !!supplier && !editable;
+  document.getElementById("supplier-modal-title").textContent = supplier
+    ? `${isDetailsOnly ? t("details_label") : t("edit_supplier_title")} — ${supplier.name}`
+    : t("new_supplier_title");
   document.getElementById("s-name").value = supplier?.name || "";
   document.getElementById("s-pib").value = supplier?.pib || "";
   document.getElementById("s-maticni").value = supplier?.maticniBroj || "";
@@ -68,6 +88,11 @@ function openSupplierModal(supplier = null) {
   document.getElementById("s-email").value = supplier?.email || "";
   document.getElementById("s-hours").value = supplier?.workingHours || "";
   document.getElementById("s-note").value = supplier?.note || "";
+
+  // Detalji-only prikaz: polja zaključana za izmenu, dugme za čuvanje sakriveno.
+  supplierFieldIds.forEach((id) => { document.getElementById(id).disabled = isDetailsOnly; });
+  if (supplierSaveBtn) supplierSaveBtn.style.display = isDetailsOnly ? "none" : "";
+
   supplierModal.classList.remove("hidden");
 }
 

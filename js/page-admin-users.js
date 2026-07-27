@@ -2,7 +2,7 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { listenCompanyUsers, createCompanyUser, updateCompanyUser } from "./users.js";
-import { escapeHtml, toast, ROLES, roleLabel } from "./utils.js";
+import { escapeHtml, toast, ROLES, roleLabel, formatDate } from "./utils.js";
 
 await loadLang();
 let companyId, currentName;
@@ -18,7 +18,7 @@ function renderUsers(users) {
   const body = document.getElementById("users-body");
   if (!users.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">${t("no_users")}</td></tr>`; return; }
   body.innerHTML = users.map((u) => `
-    <tr>
+    <tr class="row-link" data-id="${u.id}" title="${t("details_label")}">
       <td><strong>${escapeHtml(u.name)}</strong></td>
       <td>${escapeHtml(u.email)}</td>
       <td><span class="badge badge-blue">${roleLabel(u.role)}</span></td>
@@ -28,12 +28,34 @@ function renderUsers(users) {
   `).join("");
 
   body.querySelectorAll("button[data-id]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       await updateCompanyUser(companyId, btn.dataset.id, { active: btn.dataset.active !== "true" });
       toast(t("toast_user_status_updated"), "success");
     });
   });
+
+  // Klik bilo gde na redu (van dugmeta za status) otvara detalje korisnika.
+  body.querySelectorAll("tr.row-link").forEach((row) => {
+    row.addEventListener("click", () => {
+      const u = users.find((x) => x.id === row.dataset.id);
+      if (u) openUserDetails(u);
+    });
+  });
 }
+
+const userDetailsModal = document.getElementById("user-details-modal");
+
+function openUserDetails(u) {
+  document.getElementById("ud-name").value = u.name || "";
+  document.getElementById("ud-email").value = u.email || "";
+  document.getElementById("ud-role").value = roleLabel(u.role);
+  document.getElementById("ud-status").value = u.active === false ? t("inactive") : t("active");
+  document.getElementById("ud-created").value = u.createdAt ? formatDate(u.createdAt) : "—";
+  userDetailsModal.classList.remove("hidden");
+}
+
+document.getElementById("close-user-details-modal").addEventListener("click", () => userDetailsModal.classList.add("hidden"));
 
 const modal = document.getElementById("user-modal");
 document.getElementById("new-user-btn").addEventListener("click", () => modal.classList.remove("hidden"));
