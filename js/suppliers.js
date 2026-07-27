@@ -10,10 +10,12 @@ const supLocationsCol = (companyId, supplierId) => collection(db, "companies", c
 export async function addSupplier(companyId, {
   name, contact = "", phone = "", email = "",
   pib = "", maticniBroj = "", address = "", bankAccount = "",
+  workingHours = "", note = "",
   actorName, createdBy,
 }) {
   const ref = await addDoc(suppliersCol(companyId), {
     name, contact, phone, email, pib, maticniBroj, address, bankAccount,
+    workingHours, note,
     active: true, createdAt: serverTimestamp(), createdBy: createdBy || null,
   });
   await logAudit(companyId, { action: "supplier_created", entity: "Suppliers", entityId: ref.id, actorName, details: name });

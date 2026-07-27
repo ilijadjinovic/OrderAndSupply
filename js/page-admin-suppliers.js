@@ -66,6 +66,8 @@ function openSupplierModal(supplier = null) {
   document.getElementById("s-contact").value = supplier?.contact || "";
   document.getElementById("s-phone").value = supplier?.phone || "";
   document.getElementById("s-email").value = supplier?.email || "";
+  document.getElementById("s-hours").value = supplier?.workingHours || "";
+  document.getElementById("s-note").value = supplier?.note || "";
   supplierModal.classList.remove("hidden");
 }
 
@@ -82,6 +84,8 @@ document.getElementById("supplier-form").addEventListener("submit", async (e) =>
     contact: document.getElementById("s-contact").value.trim(),
     phone: document.getElementById("s-phone").value.trim(),
     email: document.getElementById("s-email").value.trim(),
+    workingHours: document.getElementById("s-hours").value.trim(),
+    note: document.getElementById("s-note").value.trim(),
   };
   if (activeEditId) {
     await updateSupplier(companyId, activeEditId, data, actorName);
