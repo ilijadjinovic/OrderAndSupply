@@ -112,16 +112,21 @@ document.getElementById("supplier-form").addEventListener("submit", async (e) =>
     workingHours: document.getElementById("s-hours").value.trim(),
     note: document.getElementById("s-note").value.trim(),
   };
-  if (activeEditId) {
-    await updateSupplier(companyId, activeEditId, data, actorName);
-    toast(t("toast_supplier_updated"), "success");
-  } else {
-    await addSupplier(companyId, { ...data, actorName, createdBy: currentUid });
-    toast(t("toast_supplier_added"), "success");
+  try {
+    if (activeEditId) {
+      await updateSupplier(companyId, activeEditId, data, actorName);
+      toast(t("toast_supplier_updated"), "success");
+    } else {
+      await addSupplier(companyId, { ...data, actorName, createdBy: currentUid });
+      toast(t("toast_supplier_added"), "success");
+    }
+    supplierModal.classList.add("hidden");
+    e.target.reset();
+    activeEditId = null;
+  } catch (err) {
+    console.error(err);
+    toast(err.message || t("toast_supplier_added"), "error");
   }
-  supplierModal.classList.add("hidden");
-  e.target.reset();
-  activeEditId = null;
 });
 
 // Lokacije preuzimanja robe — naručilac sme da doda, briše samo admin (vidi refreshLocations i firestore.rules).
@@ -152,11 +157,16 @@ async function refreshLocations() {
 
 document.getElementById("location-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  await addSupplierLocation(companyId, activeSupplierId, {
-    name: document.getElementById("l-name").value.trim(),
-    address: document.getElementById("l-address").value.trim(),
-    createdBy: currentUid,
-  });
-  e.target.reset();
-  refreshLocations();
+  try {
+    await addSupplierLocation(companyId, activeSupplierId, {
+      name: document.getElementById("l-name").value.trim(),
+      address: document.getElementById("l-address").value.trim(),
+      createdBy: currentUid,
+    });
+    e.target.reset();
+    refreshLocations();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || t("toast_supplier_added"), "error");
+  }
 });

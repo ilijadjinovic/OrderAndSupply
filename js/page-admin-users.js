@@ -5,16 +5,27 @@ import { listenCompanyUsers, createCompanyUser, updateCompanyUser } from "./user
 import { escapeHtml, toast, ROLES, roleLabel, formatDate } from "./utils.js";
 
 await loadLang();
-let companyId, currentName;
+let companyId, currentName, currentRole;
 
-requireAuth([ROLES.ADMIN], (user, profile) => {
+requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
   companyId = profile.companyId;
   currentName = profile.name;
+  currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
   listenCompanyUsers(companyId, renderUsers);
+
+  // Naručilac sme samo da DODAJE isporučioce — ograniči izbor uloge u formi
+  // i ukloni mogućnost deaktivacije naloga (to ostaje isključivo admin).
+  if (currentRole === ROLES.NARUCILAC) {
+    const roleSelect = document.getElementById("u-role");
+    [...roleSelect.options].forEach((opt) => { if (opt.value !== ROLES.ISPORUCILAC) opt.remove(); });
+    roleSelect.value = ROLES.ISPORUCILAC;
+    roleSelect.disabled = true;
+  }
 });
 
 function renderUsers(users) {
+  const isAdmin = currentRole === ROLES.ADMIN;
   const body = document.getElementById("users-body");
   if (!users.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">${t("no_users")}</td></tr>`; return; }
   body.innerHTML = users.map((u) => `
@@ -23,7 +34,7 @@ function renderUsers(users) {
       <td>${escapeHtml(u.email)}</td>
       <td><span class="badge badge-blue">${roleLabel(u.role)}</span></td>
       <td>${u.active === false ? `<span class="badge badge-red">${t("inactive")}</span>` : `<span class="badge badge-teal">${t("active")}</span>`}</td>
-      <td><button class="btn btn-sm btn-outline" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? t("activate") : t("deactivate")}</button></td>
+      <td>${isAdmin ? `<button class="btn btn-sm btn-outline" data-id="${u.id}" data-active="${u.active !== false}">${u.active === false ? t("activate") : t("deactivate")}</button>` : ""}</td>
     </tr>
   `).join("");
 

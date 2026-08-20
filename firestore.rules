@@ -36,15 +36,19 @@ service cloud.firestore {
       allow delete: if isMasterAdmin();
 
       // --- Korisnički indeks unutar firme (za listanje) ---
+      // Naručilac sme da kreira SAMO isporučilac naloge (bira se u formi); izmenu/brisanje/deaktivaciju radi admin.
       match /usersIndex/{uid} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdminOf(companyId) || isMasterAdmin();
+        allow create: if isAdminOf(companyId) || isMasterAdmin()
+                       || (isNarucilacOf(companyId) && request.resource.data.role == 'isporucilac');
+        allow update, delete: if isAdminOf(companyId) || isMasterAdmin();
       }
 
-      // --- Lokacije firme ---
+      // --- Lokacije firme (koriste se i kao adrese za isporuku pri kreiranju narudžbine) ---
       match /locations/{locId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdminOf(companyId);
+        allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
+        allow update, delete: if isAdminOf(companyId);
       }
 
       // --- Kategorije (naručilac sme samo da dodaje, briše samo admin) ---
@@ -57,11 +61,16 @@ service cloud.firestore {
       // --- Dobavljači + podkolekcije (lokacije, proizvodi) ---
       match /suppliers/{supplierId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdminOf(companyId);
+        // Naručilac sme da doda novog dobavljača i da menja onaj koji je sam kreirao; briše samo admin.
+        allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
+        allow update: if isAdminOf(companyId) || (isNarucilacOf(companyId) && resource.data.createdBy == request.auth.uid);
+        allow delete: if isAdminOf(companyId);
 
+        // Lokacije preuzimanja robe za dobavljača — naručilac sme da doda, briše samo admin.
         match /locations/{locId} {
           allow read: if isCompanyMember(companyId);
-          allow write: if isAdminOf(companyId);
+          allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
+          allow update, delete: if isAdminOf(companyId);
         }
         match /products/{productId} {
           allow read: if isCompanyMember(companyId);
@@ -129,9 +138,14 @@ service cloud.firestore {
     }
 
     // --- Korisnici (top-level, keyed by Firebase Auth uid) ---
+    // Naručilac sme da kreira SAMO isporučilac naloge (role u novom dokumentu mora biti 'isporucilac').
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isMasterAdmin() || isAdminOf(resource.data.companyId));
-      allow create: if isSignedIn() && (request.auth.uid == uid || isAdminOf(request.resource.data.companyId));
+      allow create: if isSignedIn() && (
+        request.auth.uid == uid
+        || isAdminOf(request.resource.data.companyId)
+        || (isNarucilacOf(request.resource.data.companyId) && request.resource.data.role == 'isporucilac')
+      );
       allow update: if isSignedIn() && (request.auth.uid == uid || isAdminOf(resource.data.companyId));
       allow delete: if isMasterAdmin();
     }
