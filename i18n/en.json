@@ -44,6 +44,7 @@
   "edit": "Edit",
   "add": "Add",
   "close": "Close",
+  "table_scroll_hint": "↔ Swipe the table left-right to see all data",
   "search": "Search",
   "any_location": "Any location",
   "confirm_receipt": "Confirm receipt",

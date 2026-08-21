@@ -157,3 +157,49 @@ export function renderNav({ companyId, uid, profile }) {
     });
   });
 }
+
+// ============================================================================
+// TABELE NA MOBILNOM — nagoveštaj za horizontalno skrolovanje
+// Ovaj fajl (nav.js) se importuje na svakoj strani, pa je zgodno mesto da se
+// centralno obradi ponašanje svih ".table-wrap" tabela. Za svaku tabelu se
+// proverava da li sadržaj stvarno prelazi vidljivu širinu (što se često zna
+// tek kad Firestore listener napuni tbody, zato se proverava i sa malim
+// zakašnjenjem i preko ResizeObserver-a), pa se po potrebi ispod tabele
+// prikazuje kratka poruka "prevucite za više". Poruka nestaje čim korisnik
+// jednom skroluje tu konkretnu tabelu.
+// ============================================================================
+function initTableScrollHints() {
+  document.querySelectorAll(".table-wrap").forEach((wrap) => {
+    if (wrap.dataset.scrollHintReady) return;
+    wrap.dataset.scrollHintReady = "1";
+
+    const hint = document.createElement("div");
+    hint.className = "table-scroll-hint";
+    hint.textContent = t("table_scroll_hint");
+    wrap.insertAdjacentElement("afterend", hint);
+
+    const sync = () => {
+      const scrollable = wrap.scrollWidth > wrap.clientWidth + 4;
+      wrap.classList.toggle("has-h-scroll", scrollable);
+      if (!scrollable) hint.classList.remove("show");
+    };
+
+    sync();
+    if (window.ResizeObserver) {
+      new ResizeObserver(sync).observe(wrap);
+    } else {
+      window.addEventListener("resize", sync);
+    }
+
+    wrap.addEventListener("scroll", () => {
+      wrap.classList.remove("has-h-scroll");
+      hint.classList.remove("show");
+    }, { once: true, passive: true });
+  });
+}
+
+// Pokreni odmah (za tabele koje su već u statičkom HTML-u pri učitavanju) i
+// ponovo malo kasnije (za slučaj da async podaci proširе tabelu nakon toga).
+document.addEventListener("DOMContentLoaded", initTableScrollHints);
+if (document.readyState !== "loading") initTableScrollHints();
+setTimeout(initTableScrollHints, 800);
