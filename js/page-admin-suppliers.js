@@ -2,16 +2,36 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { listenSuppliers, addSupplier, updateSupplier, deleteSupplier, addSupplierLocation, deleteSupplierLocation, getSupplierLocations } from "./suppliers.js";
+import { getCompanySettings } from "./settings.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
 
 await loadLang();
 let companyId, actorName, currentUid, currentRole, activeSupplierId, activeSupplierName;
+let latestSuppliers = [];
+let supplierSort = "name_asc";
 
 requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
   companyId = profile.companyId; actorName = profile.name;
   currentUid = user.uid; currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
-  listenSuppliers(companyId, render);
+  listenSuppliers(companyId, (suppliers) => { latestSuppliers = suppliers; render(sortSuppliers(suppliers)); });
+});
+
+// Osnovna lista već stiže sortirana po nazivu (A-Z) iz Firestore upita
+// (vidi listenSuppliers), ovde se samo dodaje opcija za obrnut redosled.
+function sortSuppliers(suppliers) {
+  const sorted = [...suppliers];
+  if (supplierSort === "name_desc") {
+    sorted.sort((a, b) => (b.name || "").localeCompare(a.name || "", "sr"));
+  } else {
+    sorted.sort((a, b) => (a.name || "").localeCompare(b.name || "", "sr"));
+  }
+  return sorted;
+}
+
+document.getElementById("suppliers-sort").addEventListener("change", (e) => {
+  supplierSort = e.target.value;
+  render(sortSuppliers(latestSuppliers));
 });
 
 function render(suppliers) {
@@ -168,5 +188,32 @@ document.getElementById("location-form").addEventListener("submit", async (e) =>
   } catch (err) {
     console.error(err);
     toast(err.message || t("toast_supplier_added"), "error");
+  }
+});
+
+// --- Izvoz spiska dobavljača u PDF (uključujući SVE unete lokacije preuzimanja) ---
+const pdfBtn = document.getElementById("suppliers-pdf-btn");
+pdfBtn.addEventListener("click", async () => {
+  const suppliers = sortSuppliers(latestSuppliers);
+  if (!suppliers.length) { toast(t("no_suppliers"), "error"); return; }
+  pdfBtn.disabled = true;
+  const originalLabel = pdfBtn.textContent;
+  pdfBtn.textContent = t("generating_pdf_ellipsis");
+  try {
+    const [{ generateSuppliersPdf }, company] = await Promise.all([
+      import("./list-pdf.js"),
+      getCompanySettings(companyId),
+    ]);
+    const locationsBySupplierId = {};
+    await Promise.all(suppliers.map(async (s) => {
+      locationsBySupplierId[s.id] = await getSupplierLocations(companyId, s.id);
+    }));
+    await generateSuppliersPdf({ company, suppliers, locationsBySupplierId });
+  } catch (err) {
+    console.error(err);
+    toast(t("toast_pdf_generate_error"), "error");
+  } finally {
+    pdfBtn.disabled = false;
+    pdfBtn.textContent = originalLabel;
   }
 });

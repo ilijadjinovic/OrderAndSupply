@@ -2,17 +2,20 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { listenCompanyUsers, createCompanyUser, updateCompanyUser } from "./users.js";
+import { getCompanySettings } from "./settings.js";
 import { escapeHtml, toast, ROLES, roleLabel, formatDate } from "./utils.js";
 
 await loadLang();
 let companyId, currentName, currentRole;
+let latestUsers = [];
+let userSort = "name_asc";
 
 requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
   companyId = profile.companyId;
   currentName = profile.name;
   currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
-  listenCompanyUsers(companyId, renderUsers);
+  listenCompanyUsers(companyId, (users) => { latestUsers = users; renderUsers(sortUsers(users)); });
 
   // Naručilac sme samo da DODAJE isporučioce — ograniči izbor uloge u formi
   // i ukloni mogućnost deaktivacije naloga (to ostaje isključivo admin).
@@ -22,6 +25,29 @@ requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
     roleSelect.value = ROLES.ISPORUCILAC;
     roleSelect.disabled = true;
   }
+});
+
+// Redosled uloga kada je izabrano sortiranje "Po ulozi" (admin firme prvi, pa naniže).
+const ROLE_SORT_ORDER = { [ROLES.ADMIN]: 0, [ROLES.NARUCILAC]: 1, [ROLES.ISPORUCILAC]: 2 };
+
+function sortUsers(users) {
+  const sorted = [...users];
+  if (userSort === "name_desc") {
+    sorted.sort((a, b) => (b.name || "").localeCompare(a.name || "", "sr"));
+  } else if (userSort === "role") {
+    sorted.sort((a, b) => {
+      const diff = (ROLE_SORT_ORDER[a.role] ?? 99) - (ROLE_SORT_ORDER[b.role] ?? 99);
+      return diff !== 0 ? diff : (a.name || "").localeCompare(b.name || "", "sr");
+    });
+  } else {
+    sorted.sort((a, b) => (a.name || "").localeCompare(b.name || "", "sr"));
+  }
+  return sorted;
+}
+
+document.getElementById("users-sort").addEventListener("change", (e) => {
+  userSort = e.target.value;
+  renderUsers(sortUsers(latestUsers));
 });
 
 function renderUsers(users) {
@@ -92,5 +118,28 @@ document.getElementById("user-form").addEventListener("submit", async (e) => {
     toast(err.message || t("toast_user_create_error"), "error");
   } finally {
     btn.disabled = false;
+  }
+});
+
+// --- Izvoz spiska korisnika u PDF ---
+const pdfBtn = document.getElementById("users-pdf-btn");
+pdfBtn.addEventListener("click", async () => {
+  const users = sortUsers(latestUsers);
+  if (!users.length) { toast(t("no_users"), "error"); return; }
+  pdfBtn.disabled = true;
+  const originalLabel = pdfBtn.textContent;
+  pdfBtn.textContent = t("generating_pdf_ellipsis");
+  try {
+    const [{ generateUsersPdf }, company] = await Promise.all([
+      import("./list-pdf.js"),
+      getCompanySettings(companyId),
+    ]);
+    await generateUsersPdf({ company, users, roleLabelFn: roleLabel });
+  } catch (err) {
+    console.error(err);
+    toast(t("toast_pdf_generate_error"), "error");
+  } finally {
+    pdfBtn.disabled = false;
+    pdfBtn.textContent = originalLabel;
   }
 });

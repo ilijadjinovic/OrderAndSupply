@@ -179,6 +179,16 @@ main.content { grid-area: main; padding: 28px 32px; overflow-y: auto; min-width:
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 22px; gap: 16px; flex-wrap: wrap; }
 .eyebrow { font-family: var(--font-mono); text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; color: var(--color-primary); font-weight: 600; margin-bottom: 6px; }
 
+/* ── HEADER ACTIONS (sort + export dugmad pored naslova stranice) ───────── */
+.header-actions { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.field-inline { margin-bottom: 0; min-width: 160px; }
+.field-inline label { margin-bottom: 4px; }
+@media (max-width: 640px) {
+  .header-actions { width: 100%; }
+  .header-actions .field-inline { flex: 1 1 100%; }
+  .header-actions .btn { flex: 1 1 auto; }
+}
+
 /* ── BUTTONS ───────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

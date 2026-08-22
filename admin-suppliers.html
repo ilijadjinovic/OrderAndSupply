@@ -16,7 +16,17 @@
   <main class="content">
     <div class="page-header">
       <div><div class="eyebrow" data-i18n="role_admin">Admin firme</div><h1 data-i18n="suppliers">Dobavljači</h1></div>
-      <button class="btn btn-amber" id="new-supplier-btn" data-i18n="new_supplier_btn">+ Novi dobavljač</button>
+      <div class="header-actions">
+        <div class="field field-inline">
+          <label data-i18n="sort_by_label">Sortiraj</label>
+          <select id="suppliers-sort">
+            <option value="name_asc" data-i18n="sort_name_asc">Naziv (A-Š)</option>
+            <option value="name_desc" data-i18n="sort_name_desc">Naziv (Š–A)</option>
+          </select>
+        </div>
+        <button class="btn btn-outline" id="suppliers-pdf-btn" data-i18n="export_list_pdf_btn">⇩ PDF</button>
+        <button class="btn btn-amber" id="new-supplier-btn" data-i18n="new_supplier_btn">+ Novi dobavljač</button>
+      </div>
     </div>
 
     <div class="panel">

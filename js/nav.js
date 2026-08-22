@@ -68,7 +68,7 @@ export function renderNav({ companyId, uid, profile }) {
           <button class="icon-btn" id="about-close" aria-label="${t("close")}">✕</button>
         </div>
         <div class="about-author">
-          <span class="about-avatar">ИБ</span>
+          <span class="about-avatar">ИЂ</span>
           <div>
             <strong>Ilija Đinović, d.i.e.</strong>
             <div class="muted" data-i18n="about_author_role">Osmislio i implementirao</div>

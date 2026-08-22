@@ -471,5 +471,16 @@
   "add_delivery_location_label": "Add a delivery location",
   "toast_location_removed_from_order": "Delivery location removed.",
   "toast_location_added_to_order": "Delivery location added.",
-  "no_more_locations_to_add": "No more locations to add"
+  "no_more_locations_to_add": "No more locations to add",
+  "sort_by_label": "Sort by",
+  "sort_name_asc": "Name (A-Z)",
+  "sort_name_desc": "Name (Z-A)",
+  "sort_by_role": "By role",
+  "export_list_pdf_btn": "⇩ PDF",
+  "suppliers_pdf_title": "Supplier list",
+  "users_pdf_title": "User list",
+  "pdf_total_count_label": "Total",
+  "pdf_no_locations_line": "No pickup locations added.",
+  "pdf_pickup_locations_label": "Pickup locations",
+  "pdf_generated_on_label": "Exported on"
 }

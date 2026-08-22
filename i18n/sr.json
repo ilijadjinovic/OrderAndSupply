@@ -471,5 +471,16 @@
   "add_delivery_location_label": "Dodaj lokaciju isporuke",
   "toast_location_removed_from_order": "Lokacija isporuke uklonjena.",
   "toast_location_added_to_order": "Lokacija isporuke dodata.",
-  "no_more_locations_to_add": "Nema više lokacija za dodavanje"
+  "no_more_locations_to_add": "Nema više lokacija za dodavanje",
+  "sort_by_label": "Sortiraj",
+  "sort_name_asc": "Naziv (A-Š)",
+  "sort_name_desc": "Naziv (Š-A)",
+  "sort_by_role": "Po ulozi",
+  "export_list_pdf_btn": "⇩ PDF",
+  "suppliers_pdf_title": "Spisak dobavljača",
+  "users_pdf_title": "Spisak korisnika",
+  "pdf_total_count_label": "Ukupno",
+  "pdf_no_locations_line": "Nema unetih lokacija preuzimanja.",
+  "pdf_pickup_locations_label": "Lokacije preuzimanja",
+  "pdf_generated_on_label": "Datum izvoza"
 }
