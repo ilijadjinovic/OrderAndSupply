@@ -1,6 +1,7 @@
 // ============================================================================
 // NAV — zajednička navigacija (sidebar + topbar), učitava se na svakoj strani
 // ============================================================================
+import { auth } from "./firebase-init.js";
 import { logout, updateOwnName, changeOwnPassword } from "./auth.js";
 import { listenNotifications, markAsRead } from "./notifications.js";
 import { getCompanySettings } from "./settings.js";
@@ -195,8 +196,10 @@ export function renderNav({ companyId, uid, profile }) {
     const input = document.getElementById("profile-name-input");
     const newName = input.value.trim();
     if (!newName) { toast(t("name_required_error"), "error"); return; }
+    const currentUser = auth.currentUser;
+    if (!currentUser) { toast(t("toast_generic_error"), "error"); return; }
     try {
-      await updateOwnName(user, profile.companyId, newName);
+      await updateOwnName(currentUser, profile.companyId, newName);
       profile.name = newName;
       document.getElementById("profile-display-name").textContent = newName;
       document.querySelector(".user-name").textContent = newName;
@@ -225,8 +228,10 @@ export function renderNav({ companyId, uid, profile }) {
       toast(t("password_mismatch_error"), "error");
       return;
     }
+    const currentUser = auth.currentUser;
+    if (!currentUser) { toast(t("toast_generic_error"), "error"); return; }
     try {
-      await changeOwnPassword(user, currentPw.value, newPw.value);
+      await changeOwnPassword(currentUser, currentPw.value, newPw.value);
       currentPw.value = ""; newPw.value = ""; confirmPw.value = "";
       toast(t("toast_password_changed"), "success");
     } catch (err) {
