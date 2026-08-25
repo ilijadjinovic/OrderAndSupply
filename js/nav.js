@@ -1,10 +1,11 @@
 // ============================================================================
 // NAV — zajednička navigacija (sidebar + topbar), učitava se na svakoj strani
 // ============================================================================
-import { logout } from "./auth.js";
+import { logout, updateOwnName, changeOwnPassword } from "./auth.js";
 import { listenNotifications, markAsRead } from "./notifications.js";
+import { getCompanySettings } from "./settings.js";
 import { setLang, currentLang, t } from "./i18n.js";
-import { formatDate, roleLabel } from "./utils.js";
+import { formatDate, roleLabel, escapeHtml, toast } from "./utils.js";
 
 const MENUS = {
   master_admin: [
@@ -84,6 +85,51 @@ export function renderNav({ companyId, uid, profile }) {
         </div>
       </div>
     </div>
+    <div class="modal-overlay hidden" id="profile-modal">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 data-i18n="profile_title">Profil</h3>
+          <button class="icon-btn" id="profile-close" aria-label="${t("close")}">✕</button>
+        </div>
+        <div class="about-author">
+          <span class="about-avatar" id="profile-avatar">${(profile.name || "?").charAt(0).toUpperCase()}</span>
+          <div>
+            <strong id="profile-display-name">${escapeHtml(profile.name || profile.email)}</strong>
+            <div class="muted">${roleLabel(profile.role)}</div>
+          </div>
+        </div>
+        <hr class="about-sep" />
+        <div class="about-list">
+          <div class="about-row"><span class="about-icon">✉️</span><span>${escapeHtml(profile.email)}</span></div>
+          ${profile.companyId ? `<div class="about-row"><span class="about-icon">🏢</span><span id="profile-company-name">…</span></div>` : ""}
+          <div class="about-row"><span class="about-icon">${profile.active === false ? "🔴" : "🟢"}</span><span>${profile.active === false ? t("inactive") : t("active")}</span></div>
+          <div class="about-row"><span class="about-icon">📅</span><span>${formatDate(profile.createdAt)}</span></div>
+        </div>
+        <hr class="about-sep" />
+        <div class="field">
+          <label for="profile-name-input" data-i18n="full_name_label">Ime i prezime</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="profile-name-input" value="${escapeHtml(profile.name || "")}" style="flex:1;" />
+            <button type="button" class="btn btn-outline btn-sm" id="profile-name-save" data-i18n="save">Sačuvaj</button>
+          </div>
+        </div>
+        <hr class="about-sep" />
+        <h4 data-i18n="change_password_title" style="margin:0 0 12px;">Promena lozinke</h4>
+        <div class="field">
+          <label for="profile-current-password" data-i18n="current_password_label">Trenutna lozinka</label>
+          <input type="password" id="profile-current-password" autocomplete="current-password" />
+        </div>
+        <div class="field">
+          <label for="profile-new-password" data-i18n="new_password_label">Nova lozinka</label>
+          <input type="password" id="profile-new-password" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="profile-confirm-password" data-i18n="confirm_password_label">Potvrda nove lozinke</label>
+          <input type="password" id="profile-confirm-password" autocomplete="new-password" />
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="profile-password-save" data-i18n="change_password_btn">Promeni lozinku</button>
+      </div>
+    </div>
     <header class="topbar">
       <button class="icon-btn" id="menu-toggle" aria-label="${t("menu_aria")}">☰</button>
       <div class="topbar-spacer"></div>
@@ -95,10 +141,10 @@ export function renderNav({ companyId, uid, profile }) {
         <button class="icon-btn" id="notif-btn" aria-label="${t("notifications_aria")}">🔔<span id="notif-dot" class="notif-dot hidden"></span></button>
         <div class="notif-panel hidden" id="notif-panel"></div>
       </div>
-      <div class="user-chip" title="${profile.name || profile.email}">
+      <button type="button" class="user-chip" id="profile-btn" title="${t("profile_title")}">
         <span class="user-avatar">${(profile.name || "?").charAt(0).toUpperCase()}</span>
         <span class="user-name">${profile.name || profile.email}</span>
-      </div>
+      </button>
       <button class="btn btn-ghost" id="logout-btn" title="${t("logout")}">
         <span class="logout-icon">⏻</span><span class="logout-label" data-i18n="logout">Odjava</span>
       </button>
@@ -129,6 +175,66 @@ export function renderNav({ companyId, uid, profile }) {
   document.getElementById("about-close").addEventListener("click", () => aboutModal.classList.add("hidden"));
   aboutModal.addEventListener("click", (e) => {
     if (e.target === aboutModal) aboutModal.classList.add("hidden");
+  });
+
+  const profileModal = document.getElementById("profile-modal");
+  document.getElementById("profile-btn").addEventListener("click", () => profileModal.classList.remove("hidden"));
+  document.getElementById("profile-close").addEventListener("click", () => profileModal.classList.add("hidden"));
+  profileModal.addEventListener("click", (e) => {
+    if (e.target === profileModal) profileModal.classList.add("hidden");
+  });
+
+  if (profile.companyId) {
+    getCompanySettings(profile.companyId).then((company) => {
+      const el = document.getElementById("profile-company-name");
+      if (el) el.textContent = company?.name || "—";
+    });
+  }
+
+  document.getElementById("profile-name-save").addEventListener("click", async () => {
+    const input = document.getElementById("profile-name-input");
+    const newName = input.value.trim();
+    if (!newName) { toast(t("name_required_error"), "error"); return; }
+    try {
+      await updateOwnName(user, profile.companyId, newName);
+      profile.name = newName;
+      document.getElementById("profile-display-name").textContent = newName;
+      document.querySelector(".user-name").textContent = newName;
+      document.querySelectorAll(".user-avatar, #profile-avatar").forEach((el) => {
+        el.textContent = newName.charAt(0).toUpperCase();
+      });
+      toast(t("toast_profile_updated"), "success");
+    } catch (err) {
+      toast(err.message || t("toast_generic_error"), "error");
+    }
+  });
+
+  document.getElementById("profile-password-save").addEventListener("click", async () => {
+    const currentPw = document.getElementById("profile-current-password");
+    const newPw = document.getElementById("profile-new-password");
+    const confirmPw = document.getElementById("profile-confirm-password");
+    if (!currentPw.value || !newPw.value || !confirmPw.value) {
+      toast(t("all_fields_required_error"), "error");
+      return;
+    }
+    if (newPw.value.length < 6) {
+      toast(t("password_too_short_error"), "error");
+      return;
+    }
+    if (newPw.value !== confirmPw.value) {
+      toast(t("password_mismatch_error"), "error");
+      return;
+    }
+    try {
+      await changeOwnPassword(user, currentPw.value, newPw.value);
+      currentPw.value = ""; newPw.value = ""; confirmPw.value = "";
+      toast(t("toast_password_changed"), "success");
+    } catch (err) {
+      const msg = err.code === "auth/invalid-credential" || err.code === "auth/wrong-password"
+        ? t("wrong_current_password_error")
+        : (err.message || t("toast_generic_error"));
+      toast(msg, "error");
+    }
   });
 
   const notifBtn = document.getElementById("notif-btn");

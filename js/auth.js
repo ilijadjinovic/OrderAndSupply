@@ -4,7 +4,8 @@
 import {
   auth, db, onAuthStateChanged, signInWithEmailAndPassword,
   createUserWithEmailAndPassword, signOut, sendPasswordResetEmail,
-  updateProfile, doc, getDoc, setDoc, serverTimestamp,
+  updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider,
+  doc, getDoc, setDoc, updateDoc, serverTimestamp,
 } from "./firebase-init.js";
 import { ROLES, uid } from "./utils.js";
 import { logAudit } from "./audit.js";
@@ -55,6 +56,28 @@ export async function getUserProfile(uidValue) {
 }
 
 export function clearProfileCache() { cachedProfile = null; }
+
+// Izmena imena ulogovanog korisnika — ažurira Firebase Auth displayName,
+// glavni users/{uid} dokument i, ako korisnik pripada firmi, njen usersIndex
+// dokument (koristi se za listanje korisnika u admin panelu).
+export async function updateOwnName(user, companyId, newName) {
+  await updateProfile(user, { displayName: newName });
+  const updates = [updateDoc(doc(db, "users", user.uid), { name: newName })];
+  if (companyId) {
+    updates.push(updateDoc(doc(db, "companies", companyId, "usersIndex", user.uid), { name: newName }));
+  }
+  await Promise.all(updates);
+  if (cachedProfile && cachedProfile.uid === user.uid) cachedProfile.name = newName;
+}
+
+// Izmena lozinke ulogovanog korisnika. Firebase iz bezbednosnih razloga
+// zahteva "svežu" prijavu za osetljive operacije, pa se prvo radi
+// reautentifikacija sa trenutnom lozinkom.
+export async function changeOwnPassword(user, currentPassword, newPassword) {
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+  await updatePassword(user, newPassword);
+}
 
 // Čuva rutu: poziva callback(user, profile) kad je auth spreman;
 // ako allowedRoles je zadat, preusmerava neautorizovane korisnike na index.html
