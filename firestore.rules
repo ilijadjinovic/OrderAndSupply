@@ -41,7 +41,12 @@ service cloud.firestore {
         allow read: if isCompanyMember(companyId);
         allow create: if isAdminOf(companyId) || isMasterAdmin()
                        || (isNarucilacOf(companyId) && request.resource.data.role == 'isporucilac');
-        allow update, delete: if isAdminOf(companyId) || isMasterAdmin();
+        // Admin/master admin mogu da menjaju sve; korisnik sme da menja SAMO svoje "name"
+        // (koristi se u Profil modalu — Poglavlje "Profil info").
+        allow update: if isAdminOf(companyId) || isMasterAdmin()
+                       || (isSignedIn() && request.auth.uid == uid
+                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
+        allow delete: if isAdminOf(companyId) || isMasterAdmin();
       }
 
       // --- Lokacije firme (koriste se i kao adrese za isporuku pri kreiranju narudžbine) ---
@@ -146,7 +151,15 @@ service cloud.firestore {
         || isAdminOf(request.resource.data.companyId)
         || (isNarucilacOf(request.resource.data.companyId) && request.resource.data.role == 'isporucilac')
       );
-      allow update: if isSignedIn() && (request.auth.uid == uid || isAdminOf(resource.data.companyId));
+      // Admin firme sme da menja bilo koje polje svojih zaposlenih; sam korisnik sme
+      // da menja SAMO svoje "name" (Profil modal). Ovo sprečava da korisnik sam sebi
+      // promeni ulogu/firmu/status preko klijentskog SDK-a. (Master admin ovde nema
+      // posebna prava — nema svoju firmu — isto kao i pre ove izmene.)
+      allow update: if isSignedIn() && (
+        isAdminOf(resource.data.companyId)
+        || (request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']))
+      );
       allow delete: if isMasterAdmin();
     }
   }
