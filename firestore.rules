@@ -79,7 +79,11 @@ service cloud.firestore {
         }
         match /products/{productId} {
           allow read: if isCompanyMember(companyId);
-          allow write: if isAdminOf(companyId);
+          // Naručilac sme da KREIRA proizvod (auto-katalogizacija stavki iz slobodnog
+          // unosa pri kreiranju narudžbine — vidi page-new-order.js). Izmenu i brisanje
+          // i dalje radi samo admin, da naručilac ne bi menjao/brisao tuđe stavke.
+          allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
+          allow update, delete: if isAdminOf(companyId);
         }
       }
 

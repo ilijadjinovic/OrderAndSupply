@@ -2,13 +2,13 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { getSuppliers, getSupplierLocations } from "./suppliers.js";
-import { getProducts } from "./catalog.js";
+import { getProducts, addProduct } from "./catalog.js";
 import { getLocations } from "./locations.js";
 import { createOrder, assignOrder } from "./orders.js";
 import { getIsporucioci } from "./users.js";
 import { getTemplates, saveTemplate } from "./templates.js";
 import { getCompanySettings } from "./settings.js";
-import { escapeHtml, toast, uid, getParam } from "./utils.js";
+import { escapeHtml, toast, uid, getParam, findClosestCatalogMatch } from "./utils.js";
 
 await loadLang();
 
@@ -16,6 +16,10 @@ let companyId, uidValue, actorName;
 let suppliers = [], companyLocations = [], assignmentMode = "admin_bira";
 let cart = [];               // {tempId, supplierId, supplierName, productId, productName, unit, quantity, note, pickupLocationId, pickupLocationName, deliveryLocationId, deliveryLocationName}
 let chosenDeliveryLocations = []; // {locationId, locationName}
+
+// Katalog trenutno izabranog dobavljača (osvežava se pri promeni dobavljača) —
+// koristi se za detekciju duplikata/sličnih naziva pri slobodnom (ručnom) unosu.
+let currentSupplierCatalog = [];
 
 requireAuth(["narucilac"], async (user, profile) => {
   companyId = profile.companyId; uidValue = user.uid; actorName = profile.name;
@@ -65,6 +69,7 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
 
   const [locs, products] = await Promise.all([getSupplierLocations(companyId, supplierId), getProducts(companyId, supplierId)]);
   pickupSelect.innerHTML += locs.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
+  currentSupplierCatalog = products;
 
   if (!products.length) { productList.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_products_in_catalog")}</td></tr>`; return; }
   const supplier = suppliers.find((s) => s.id === supplierId);
@@ -122,6 +127,13 @@ document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
 });
 
 // --- Slobodan (ručni) unos stavke — samo naziv, količina, JM, napomena ---
+// Pri dodavanju u listu, stavka se automatski (samo)katalogizuje kod tog dobavljača:
+// - Ako je naziv IDENTIČAN nekoj postojećoj stavci u katalogu (bez obzira na velika/mala
+//   slova i razmake) -> ne dupliramo katalog, stavka se poveže sa postojećim proizvodom.
+// - Ako je naziv VRLO SLIČAN (Levenštajnova distanca u kombinaciji apsolutnog i
+//   relativnog praga) -> pitamo korisnika preko modala (similar-item-modal) da li ipak
+//   želi da doda kao novu stavku u katalog.
+// - Ako nema poklapanja -> stavka se dodaje u narudžbenicu I automatski upisuje u katalog.
 document.getElementById("manual-add-btn").addEventListener("click", () => {
   const supplierId = document.getElementById("supplier-select").value;
   if (!supplierId) { toast(t("toast_select_supplier_first"), "error"); return; }
@@ -132,24 +144,101 @@ document.getElementById("manual-add-btn").addEventListener("click", () => {
   const unit = document.getElementById("manual-unit").value.trim() || "kom";
   const note = document.getElementById("manual-note").value.trim();
 
-  const supplier = suppliers.find((s) => s.id === supplierId);
-  const pickupSelect = document.getElementById("pickup-select");
-  const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
+  processManualItem({ supplierId, name, qty, unit, note });
+});
 
-  cart.push({
-    tempId: uid("item"), supplierId, supplierName: supplier?.name || t("supplier"),
-    productId: "", productName: name, unit, quantity: qty, note,
-    pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : t("any_location"),
-    deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
-    manualEntry: true,
-  });
-
-  toast(t("toast_item_added", { name }), "success");
+function resetManualEntryForm() {
   document.getElementById("manual-name").value = "";
   document.getElementById("manual-qty").value = "1";
   document.getElementById("manual-note").value = "";
   document.getElementById("manual-name").focus();
+}
+
+function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, productId = "", createInCatalog = false }) {
+  const supplier = suppliers.find((s) => s.id === supplierId);
+  const pickupSelect = document.getElementById("pickup-select");
+  const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
+
+  const newItem = {
+    tempId: uid("item"), supplierId, supplierName: supplier?.name || t("supplier"),
+    productId, productName: name, unit, quantity: qty, note,
+    pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : t("any_location"),
+    deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
+    manualEntry: !productId,
+  };
+  cart.push(newItem);
   renderCart();
+
+  if (createInCatalog) {
+    addProduct(companyId, supplierId, { name, unit, actorName, createdBy: uidValue, source: "auto_from_order" })
+      .then((newId) => {
+        currentSupplierCatalog.push({ id: newId, name, unit });
+        newItem.productId = newId;
+        newItem.manualEntry = false;
+        renderCart(); // osveži badge "Ručni unos" pošto je stavka sad povezana sa katalogom
+        toast(t("toast_item_added_to_catalog", { name }), "success");
+      })
+      .catch((err) => {
+        console.error(err);
+        // Stavka ostaje u narudžbenici i ako upis u katalog ne uspe (npr. mrežni problem) —
+        // korisnik ne treba da izgubi već uneti podatak zbog greške u katalogizaciji.
+        toast(t("toast_item_added", { name }), "success");
+      });
+  } else if (productId) {
+    toast(t("toast_item_matched_catalog", { name }), "success");
+  } else {
+    toast(t("toast_item_added", { name }), "success");
+  }
+}
+
+let pendingSimilarItem = null; // { supplierId, name, qty, unit, note, existingProduct }
+
+function processManualItem({ supplierId, name, qty, unit, note }) {
+  const match = findClosestCatalogMatch(name, currentSupplierCatalog);
+
+  if (match?.type === "exact") {
+    // Tačan duplikat -> ne upisujemo novi proizvod u katalog, samo povežemo stavku
+    // sa postojećim proizvodom i dodamo je u narudžbenicu (bez pitanja korisniku).
+    addManualItemToCartAndOptionallyCatalog({
+      supplierId, name: match.product.name, qty, unit, note, productId: match.product.id, createInCatalog: false,
+    });
+    resetManualEntryForm();
+    return;
+  }
+
+  if (match?.type === "similar") {
+    pendingSimilarItem = { supplierId, name, qty, unit, note, existingProduct: match.product };
+    openSimilarItemModal(match.product.name, name);
+    return; // sačekaj odgovor korisnika (DODAJ / ODBACI STAVKU)
+  }
+
+  // Nema poklapanja -> nova stavka, automatski se katalogizuje.
+  addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, createInCatalog: true });
+  resetManualEntryForm();
+}
+
+// --- Modal: "Slična stavka postoji" ---
+const similarItemModal = document.getElementById("similar-item-modal");
+function openSimilarItemModal(existingName, newName) {
+  document.getElementById("similar-item-existing-name").textContent = existingName;
+  document.getElementById("similar-item-new-name").textContent = newName;
+  similarItemModal.classList.remove("hidden");
+}
+function closeSimilarItemModal() {
+  similarItemModal.classList.add("hidden");
+  pendingSimilarItem = null;
+}
+document.getElementById("close-similar-item-modal").addEventListener("click", closeSimilarItemModal);
+document.getElementById("similar-item-discard-btn").addEventListener("click", () => {
+  toast(t("toast_item_discarded"), "info");
+  closeSimilarItemModal();
+});
+document.getElementById("similar-item-add-btn").addEventListener("click", () => {
+  if (!pendingSimilarItem) return;
+  const { supplierId, name, qty, unit, note } = pendingSimilarItem;
+  addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, createInCatalog: true });
+  closeSimilarItemModal();
+  resetManualEntryForm();
 });
 
 // --- Delivery locations ---

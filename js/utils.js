@@ -140,3 +140,55 @@ export function debounce(fn, wait = 300) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
 }
+
+// --- Levenštajnova distanca (broj izmena karaktera potrebnih da se jedan string
+// pretvori u drugi) — koristi se za detekciju sličnih naziva pri auto-katalogizaciji
+// stavki iz slobodnog unosa narudžbenice. ---
+export function levenshteinDistance(a = "", b = "") {
+  a = String(a); b = String(b);
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const curr = [i];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    prev = curr;
+  }
+  return prev[n];
+}
+
+// Normalizacija naziva radi poređenja (mala slova, jedan razmak, bez viška whitespace-a).
+export function normalizeName(str = "") {
+  return String(str).toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+// Poredi uneti naziv sa nazivom iz kataloga.
+// Vraća: "exact" (identičan posle normalizacije), "similar" (Levenštajn distanca
+// zadovoljava I apsolutni I relativni prag — konzervativna kombinacija da kratki
+// nazivi ne budu lažno pogođeni), ili "different".
+export function compareItemNames(a, b, { maxDistance = 3, maxRelativeDistance = 0.2 } = {}) {
+  const na = normalizeName(a), nb = normalizeName(b);
+  if (!na || !nb) return "different";
+  if (na === nb) return "exact";
+  const dist = levenshteinDistance(na, nb);
+  const longer = Math.max(na.length, nb.length) || 1;
+  const relative = dist / longer;
+  if (dist > 0 && dist <= maxDistance && relative <= maxRelativeDistance) return "similar";
+  return "different";
+}
+
+// Nađe najbolje poklapanje (exact ili similar) unetog naziva unutar liste proizvoda.
+// products: niz objekata sa poljem "name". Vraća { type: "exact"|"similar", product } ili null.
+export function findClosestCatalogMatch(name, products, options) {
+  let bestSimilar = null;
+  for (const p of products) {
+    const result = compareItemNames(name, p.name, options);
+    if (result === "exact") return { type: "exact", product: p };
+    if (result === "similar" && !bestSimilar) bestSimilar = { type: "similar", product: p };
+  }
+  return bestSimilar;
+}

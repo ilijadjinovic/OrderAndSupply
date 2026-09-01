@@ -23,11 +23,11 @@ export async function getCategories(companyId) {
 // --- Proizvodi dobavljača (naziv, šifra, barkod, JM, kategorija, slika, PDV, min. količina) ---
 export async function addProduct(companyId, supplierId, {
   name, code = "", barcode = "", unit = "kom", categoryId = "", imageUrl = "",
-  vatRate = 20, minQuantity = 1, actorName, createdBy,
+  vatRate = 20, minQuantity = 1, actorName, createdBy, source = "manual",
 }) {
   const ref = await addDoc(productsCol(companyId, supplierId), {
     name, code, barcode, unit, categoryId, imageUrl, vatRate, minQuantity,
-    active: true, createdAt: serverTimestamp(), createdBy: createdBy || null,
+    active: true, createdAt: serverTimestamp(), createdBy: createdBy || null, source,
   });
   await logAudit(companyId, { action: "product_created", entity: "SupProducts", entityId: ref.id, actorName, details: name });
   return ref.id;
