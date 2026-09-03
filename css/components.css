@@ -29,6 +29,7 @@ table.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .data-table td { padding: 12px; border-bottom: 1px solid var(--ink-100); vertical-align: middle; }
 .data-table tr:hover td { background: var(--paper); }
 .data-table .row-link { cursor: pointer; }
+.data-table .col-num { width: 1%; text-align: center; white-space: nowrap; }
 .empty-row td { text-align: center; color: var(--ink-300); padding: 34px 12px; }
 
 /* ---- Badges (statusi) ---- */
