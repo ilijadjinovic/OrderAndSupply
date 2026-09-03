@@ -6,7 +6,7 @@ import {
   acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, assignOrder,
   updateOrderItem, addOrderItem, updateOrderPriority, addOrderDeliveryLocation, removeOrderDeliveryLocation,
 } from "./orders.js";
-import { startPurchase, finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
+import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
 import { getSupplierLocations } from "./suppliers.js";
 import { getProducts, smartSearch } from "./catalog.js";
 import { getLocations } from "./locations.js";
@@ -178,19 +178,10 @@ function renderActionBar() {
         await rejectOrder(companyId, orderId, { reason, actorUid: uidValue, actorName: profile.name, orderCreatedByUid: order.createdByUid });
         toast(t("toast_order_rejected"), "success");
       });
-    } else if (order.status === S.ZAVRSENA_NABAVKA) {
-      bar.innerHTML = `<button class="btn btn-amber" id="start-delivery-btn" data-i18n="start_delivery">${t("start_delivery")}</button>`;
-      document.getElementById("start-delivery-btn").addEventListener("click", async () => {
-        await setOrderStatus(companyId, orderId, S.U_ISPORUCI, { actorUid: uidValue, actorName: profile.name });
-        toast(t("toast_delivery_started"), "success");
-      });
-    } else if (order.status === S.U_ISPORUCI) {
-      const allDelivered = deliveryLocations.length > 0 && deliveryLocations.every((l) => l.status !== "ceka");
-      bar.innerHTML = `<button class="btn btn-amber" id="finish-delivery-btn" data-i18n="finish_delivery" ${allDelivered ? "" : "disabled"}>${t("finish_delivery")}</button>`;
-      document.getElementById("finish-delivery-btn").addEventListener("click", async () => {
-        await setOrderStatus(companyId, orderId, S.ISPORUCENA, { actorUid: uidValue, actorName: profile.name });
-        toast(t("toast_goods_delivered"), "success");
-      });
+    } else if (order.status === S.ZAVRSENA_NABAVKA || order.status === S.U_ISPORUCI) {
+      // D+E: nema posebnih dugmadi ovde — isporuka se pokreće i završava
+      // automatski kroz "Označi isporučeno" u panelu lokacija isporuke ispod.
+      bar.innerHTML = `<span class="muted">${t("delivery_hint_use_panel")}</span>`;
     }
   }
 
@@ -440,8 +431,6 @@ function renderPurchasesPanel() {
       <div class="supplier-block">
         <div class="supplier-block-head"><h3>${escapeHtml(p.supplierName)}</h3>${statusBadge}</div>
         ${locGroupsHtml}
-        ${canWork && p.status === "ceka" ? `<button class="btn btn-sm btn-amber" data-start-purchase="${p.id}" style="margin-top:10px;">${t("start_this_purchase")}</button>` : ""}
-        ${canWork && p.status === "u_toku" ? `<button class="btn btn-sm btn-primary" data-finish-purchase="${p.id}" style="margin-top:10px;">${t("finish_this_purchase")}</button>` : ""}
         <div class="form-row payment-form" data-purchase="${p.id}" style="margin-top:12px;align-items:end;">
           <div class="field"><label>${t("paid_amount_label")} (${companyCurrency()})</label><input type="number" step="0.01" min="0" class="pay-amount" value="${p.paidAmount ?? ""}" placeholder="0.00" ${canEditFinance ? "" : "disabled"} /></div>
           <div class="field"><label>${t("receipt_number_label")}</label><input type="text" class="pay-receipt-number" value="${escapeHtml(p.receiptNumber || "")}" ${canEditFinance ? "" : "disabled"} /></div>
@@ -455,27 +444,6 @@ function renderPurchasesPanel() {
 
   initDatepickers(panel);
 
-  panel.querySelectorAll("button[data-start-purchase]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      await startPurchase(companyId, orderId, btn.dataset.startPurchase, profile.name);
-      if (order.status === ORDER_STATUS.PRIHVACENA) {
-        await setOrderStatus(companyId, orderId, ORDER_STATUS.U_NABAVCI, { actorUid: uidValue, actorName: profile.name });
-      }
-      toast(t("toast_purchase_started"), "success");
-    });
-  });
-  panel.querySelectorAll("button[data-finish-purchase]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      await finishPurchase(companyId, orderId, btn.dataset.finishPurchase, profile.name);
-      const stillOpen = purchases.some((p) => p.id !== btn.dataset.finishPurchase && p.status !== "zavrsena");
-      if (!stillOpen) {
-        await setOrderStatus(companyId, orderId, ORDER_STATUS.ZAVRSENA_NABAVKA, { actorUid: uidValue, actorName: profile.name });
-        toast(t("toast_all_purchases_finished"), "success");
-      } else {
-        toast(t("toast_purchase_finished_for_supplier"), "success");
-      }
-    });
-  });
   panel.querySelectorAll("button[data-save-payment]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = panel.querySelector(`.payment-form[data-purchase="${btn.dataset.savePayment}"]`);
@@ -495,6 +463,27 @@ function renderPurchasesPanel() {
       if (btn.dataset.action === "kupljeno") await markItemPurchased(companyId, orderId, itemId, { purchasedQty: qty, substituteName: "" });
       if (btn.dataset.action === "nije") await markItemNotFound(companyId, orderId, itemId);
       if (btn.dataset.action === "zamena") await markItemSubstitute(companyId, orderId, itemId, { purchasedQty: qty, substituteName: substitute || t("substitution") });
+
+      // B: auto-završavanje nabavke po dobavljaču kad su sve njegove stavke obrađene
+      // (nema više posebnog dugmeta "Završi ovu nabavku") — a kad su i svi ostali
+      // dobavljači gotovi, cela narudžbina automatski prelazi u "zavrsena_nabavka".
+      const item = items.find((i) => i.id === itemId);
+      const purchase = item && purchases.find((p) => p.supplierId === item.supplierId);
+      const supplierItemsDone = item && items
+        .filter((i) => i.supplierId === item.supplierId)
+        .every((i) => i.id === itemId || i.purchaseStatus !== "na_cekanju");
+
+      if (purchase && purchase.status !== "zavrsena" && supplierItemsDone) {
+        await finishPurchase(companyId, orderId, purchase.id, profile.name);
+        const stillOpen = purchases.some((p) => p.id !== purchase.id && p.status !== "zavrsena");
+        if (!stillOpen) {
+          await setOrderStatus(companyId, orderId, ORDER_STATUS.ZAVRSENA_NABAVKA, { actorUid: uidValue, actorName: profile.name });
+          toast(t("toast_all_purchases_finished"), "success");
+        } else {
+          toast(t("toast_purchase_finished_for_supplier"), "success");
+        }
+        return;
+      }
       toast(t("toast_updated"), "success");
     });
   });
@@ -551,7 +540,11 @@ function renderDeliveryPanel() {
   const panel = document.getElementById("delivery-panel");
   const canEdit = canEditOrder();
   if (!deliveryLocations.length && !canEdit) { panel.innerHTML = ""; return; }
-  const isDeliverer = profile.role === "isporucilac" && order.assignedToUid === uidValue && order.status === ORDER_STATUS.U_ISPORUCI;
+  // D: isporučilac može da počne da označava lokacije kao isporučene čim je
+  // nabavka gotova (zavrsena_nabavka), bez posebnog "Pokreni isporuku" klika —
+  // prvi klik na "Označi isporučeno" sam prebacuje narudžbinu u u_isporuci.
+  const isDeliverer = profile.role === "isporucilac" && order.assignedToUid === uidValue
+    && [ORDER_STATUS.ZAVRSENA_NABAVKA, ORDER_STATUS.U_ISPORUCI].includes(order.status);
 
   const statusBadge = { ceka: `<span class="badge badge-gray">${t("delivery_status_waiting")}</span>`, isporuceno: `<span class="badge badge-amber">${t("delivery_status_delivered")}</span>`, potvrdjeno: `<span class="badge badge-teal">${t("delivery_status_confirmed")}</span>` };
 
@@ -578,7 +571,22 @@ function renderDeliveryPanel() {
   panel.innerHTML = `<div class="panel-head"><h2>${t("delivery_locations_title")}</h2></div>${rowsHtml}${addLocHtml}`;
 
   panel.querySelectorAll("button[data-deliver]").forEach((btn) => {
-    btn.addEventListener("click", () => markLocationDelivered(companyId, orderId, btn.dataset.deliver, profile.name));
+    btn.addEventListener("click", async () => {
+      const locId = btn.dataset.deliver;
+      await markLocationDelivered(companyId, orderId, locId, profile.name);
+
+      // D: prvi klik na "Označi isporučeno" ujedno pokreće isporuku ako još nije pokrenuta
+      if (order.status === ORDER_STATUS.ZAVRSENA_NABAVKA) {
+        await setOrderStatus(companyId, orderId, ORDER_STATUS.U_ISPORUCI, { actorUid: uidValue, actorName: profile.name });
+      }
+
+      // E: kad je i poslednja preostala lokacija označena, isporuka se automatski završava
+      const stillWaiting = deliveryLocations.some((l) => l.id !== locId && l.status === "ceka");
+      if (!stillWaiting) {
+        await setOrderStatus(companyId, orderId, ORDER_STATUS.ISPORUCENA, { actorUid: uidValue, actorName: profile.name });
+        toast(t("toast_goods_delivered"), "success");
+      }
+    });
   });
   panel.querySelectorAll("button[data-remove-loc]").forEach((btn) => {
     btn.addEventListener("click", async () => {

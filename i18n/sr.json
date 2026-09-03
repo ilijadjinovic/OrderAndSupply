@@ -79,6 +79,7 @@
   "finish_purchase": "Završi nabavku",
   "start_delivery": "Počni isporuku",
   "finish_delivery": "Završi isporuku",
+  "delivery_hint_use_panel": "Označite lokacije kao isporučene u panelu ispod — isporuka se automatski pokreće i završava.",
   "reports": "Izveštaji",
   "role_master_admin": "Master Admin",
   "role_admin": "Admin firme",

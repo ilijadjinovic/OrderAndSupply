@@ -79,6 +79,7 @@
   "finish_purchase": "Finish purchase",
   "start_delivery": "Start delivery",
   "finish_delivery": "Finish delivery",
+  "delivery_hint_use_panel": "Mark locations as delivered in the panel below — delivery starts and finishes automatically.",
   "reports": "Reports",
   "role_master_admin": "Master Admin",
   "role_admin": "Company Admin",

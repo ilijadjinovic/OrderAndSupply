@@ -198,8 +198,21 @@ export async function assignOrder(companyId, orderId, { assignedToUid, assignedT
 }
 
 // --- Prihvatanje / odbijanje — Poglavlje 2.4, 4.3 ---
+// Napomena (racionalizacija klikova, tačka A): prihvatanje narudžbine odmah
+// pokreće nabavku kod svih dobavljača (status narudžbine ide direktno na
+// u_nabavci, a svaka Purchase odmah na "u_toku") — isporučilac više ne mora
+// da klikne posebno "Započni nabavku" za svakog dobavljača ponaosob.
 export async function acceptOrder(companyId, orderId, { actorUid, actorName, orderCreatedByUid }) {
-  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.PRIHVACENA, acceptedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  const orderRef = doc(db, "companies", companyId, "orders", orderId);
+  const purchasesSnap = await getDocs(purchasesCol(companyId, orderId));
+
+  const batch = writeBatch(db);
+  batch.update(orderRef, { status: ORDER_STATUS.U_NABAVCI, acceptedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  purchasesSnap.docs.forEach((d) => {
+    batch.update(d.ref, { status: "u_toku", startedAt: serverTimestamp() });
+  });
+  await batch.commit();
+
   await logAudit(companyId, { action: "order_accepted", entity: "Orders", entityId: orderId, actorUid, actorName });
   await createNotification(companyId, { toUid: orderCreatedByUid, event: NOTIF_EVENTS.NARUDZBINA_PRIHVACENA, orderId, titleKey: "notif_order_accepted_title", bodyKey: "notif_order_accepted_body", bodyParams: { name: actorName } });
 }
