@@ -204,7 +204,7 @@ function renderItemsTable() {
   const body = document.getElementById("items-body");
   const canEdit = canEditOrder();
   if (!items.length && !canEdit) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_items")}</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">${t("no_items")}</td></tr>`;
     renderAddItemPanel(canEdit);
     return;
   }
@@ -225,8 +225,9 @@ function renderItemsTable() {
     return opts.join("");
   };
 
-  body.innerHTML = (items.length ? items : [null]).filter(Boolean).map((i) => `
+  body.innerHTML = (items.length ? items : [null]).filter(Boolean).map((i, idx) => `
     <tr data-item-id="${i.id}">
+      <td class="col-num muted">${idx + 1}</td>
       <td><strong>${escapeHtml(i.productName)}</strong></td>
       <td>${escapeHtml(i.supplierName)}</td>
       <td>${i.pickupLocationId && i.pickupLocationId !== "any" ? escapeHtml(i.pickupLocationName || "—") : "—"}</td>
@@ -243,7 +244,7 @@ function renderItemsTable() {
         ${canEdit ? `<button class="btn btn-sm btn-ghost" data-remove="${i.id}">✕ ${t("remove")}</button>` : ""}
       </td>
     </tr>
-  `).join("") || `<tr class="empty-row"><td colspan="7">${t("no_items")}</td></tr>`;
+  `).join("") || `<tr class="empty-row"><td colspan="8">${t("no_items")}</td></tr>`;
 
   body.querySelectorAll("button[data-remove]").forEach((btn) => {
     btn.addEventListener("click", async () => {
