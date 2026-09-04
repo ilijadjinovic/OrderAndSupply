@@ -25,7 +25,7 @@ export async function resolveClaim(companyId, orderId, claimId, { resolutionNote
   await updateDoc(doc(db, "companies", companyId, "orders", orderId, "claims", claimId), {
     status: "zatvorena", resolutionNote, resolvedAt: serverTimestamp(),
   });
-  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ZATVORENA, updatedAt: serverTimestamp() });
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ZATVORENA, updatedAt: serverTimestamp(), closedAt: serverTimestamp() });
   await logAudit(companyId, { action: "claim_closed", entity: "Orders", entityId: orderId, actorName });
 }
 

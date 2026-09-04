@@ -266,7 +266,7 @@ export async function removeOrderDeliveryLocation(companyId, orderId, locId) {
 // --- Potvrda prijema + auto-prenos nedostajuće robe u sledeću nabavku (Poglavlje 6) ---
 export async function confirmReceipt(companyId, orderId, { actorUid, actorName, missingItemsToCarryOver = [] }) {
   await setOrderStatus(companyId, orderId, ORDER_STATUS.POTVRDJEN_PRIJEM, { actorUid, actorName });
-  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ZATVORENA, confirmedAt: serverTimestamp() });
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ZATVORENA, confirmedAt: serverTimestamp(), closedAt: serverTimestamp() });
   await createNotification(companyId, { toUid: null, event: NOTIF_EVENTS.PRIJEM_POTVRDJEN, orderId, titleKey: "notif_receipt_confirmed_title", bodyKey: "notif_receipt_confirmed_body" });
 
   // Ako postoje nedostajuće stavke i naručilac je izabrao "Da" — kreira se nova narudžbina

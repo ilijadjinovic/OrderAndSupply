@@ -115,6 +115,7 @@ function renderHeader() {
     ${priorityHtml}
     <span class="badge ${badgeClassForStatus(order.status)}">${statusLabel(order.status)}</span> ·
     ${t("created_label")} ${formatDate(order.createdAt)}
+    ${order.status === ORDER_STATUS.ZATVORENA && (order.closedAt || order.updatedAt) ? ` · ${t("closed_label")} ${formatDate(order.closedAt || order.updatedAt)}` : ""}
     ${editable ? `<span class="muted" style="display:block;margin-top:4px;font-size:12px;">✎ ${t("order_editable_hint")}</span>` : ""}
   `;
 

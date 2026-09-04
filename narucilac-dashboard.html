@@ -22,11 +22,14 @@
     <div class="stat-grid" id="stat-cards"></div>
 
     <div class="panel">
-      <div class="panel-head"><h2 data-i18n="my_orders">Moje narudžbine</h2></div>
+      <div class="panel-head">
+        <h2 data-i18n="my_orders">Moje narudžbine</h2>
+        <span id="filter-chip"></span>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th data-i18n="export_col_number">Broj</th><th data-i18n="priority">Prioritet</th><th data-i18n="status">Status</th><th data-i18n="role_isporucilac">Isporučilac</th><th data-i18n="created_label">Kreirana</th><th></th></tr></thead>
-          <tbody id="orders-body"><tr class="empty-row"><td colspan="6" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
+          <thead><tr><th data-i18n="export_col_number">Broj</th><th data-i18n="priority">Prioritet</th><th data-i18n="status">Status</th><th data-i18n="role_isporucilac">Isporučilac</th><th data-i18n="created_label">Kreirana</th><th data-i18n="closed_label">Zatvorena</th><th></th></tr></thead>
+          <tbody id="orders-body"><tr class="empty-row"><td colspan="7" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>

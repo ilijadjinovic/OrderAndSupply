@@ -308,7 +308,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-primary)
 .stat-card {
   background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
   padding: 18px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden; transition: all 0.15s;
+  cursor: pointer; user-select: none;
 }
+.stat-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.stat-card.active { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary) inset; }
+.stat-card.active.red { border-color: var(--color-danger); box-shadow: 0 0 0 1px var(--color-danger) inset; }
+.stat-card.active.amber { border-color: var(--color-warning); box-shadow: 0 0 0 1px var(--color-warning) inset; }
+.stat-card.active.teal { border-color: var(--color-info); box-shadow: 0 0 0 1px var(--color-info) inset; }
 .stat-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--color-primary); }
 .stat-card:hover { border-color: var(--color-border-light); transform: translateY(-1px); }
 .stat-card .stat-label { font-size: 12px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
