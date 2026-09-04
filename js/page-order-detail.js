@@ -3,7 +3,7 @@ import { renderNav } from "./nav.js";
 import { loadLang, t, currentLang } from "./i18n.js";
 import {
   listenOrder, listenOrderItems, listenOrderPurchases, listenDeliveryLocations,
-  acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, assignOrder,
+  acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, deleteOrder, assignOrder,
   updateOrderItem, addOrderItem, updateOrderPriority, addOrderDeliveryLocation, removeOrderDeliveryLocation,
 } from "./orders.js";
 import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
@@ -90,6 +90,7 @@ function renderAll() {
   renderHeader();
   renderStatusTrack();
   renderActionBar();
+  renderDeleteZone();
   renderItemsTable();
   renderPurchasesPanel();
   renderFinancePanel();
@@ -189,6 +190,27 @@ function renderActionBar() {
   if (role === "narucilac" && order.createdByUid === uidValue && order.status === S.REKLAMACIJA) {
     bar.innerHTML = `<span class="badge badge-red">${t("claim_in_progress")}</span>`;
   }
+}
+
+// ---------------------------------------------------------------- DELETE ZONE
+// Odvojeno od action-bar-a namerno: action-bar se za admina asinhrono
+// prepisuje (getIsporucioci().then(...)) pa bi deljenje istog elementa
+// povremeno izbrisalo dugme za brisanje. Dozvole prate firestore.rules
+// (canDeleteOrder): admin sme uvek i bilo koju, naručilac samo svoju dok
+// nije prihvaćena od isporučioca.
+function renderDeleteZone() {
+  const zone = document.getElementById("delete-zone");
+  const canDelete = profile.role === "admin" || canEditOrder();
+  if (!canDelete) { zone.innerHTML = ""; return; }
+  zone.innerHTML = `<button class="btn btn-danger" id="delete-order-btn">🗑️ ${t("delete_order_btn")}</button>`;
+  document.getElementById("delete-order-btn").addEventListener("click", async () => {
+    if (!confirm(t("confirm_delete_order", { number: order.orderNumber }))) return;
+    await deleteOrder(companyId, orderId, { actorUid: uidValue, actorName: profile.name, orderNumber: order.orderNumber });
+    toast(t("toast_order_deleted"), "success");
+    const target = profile.role === "narucilac" ? "./narucilac-dashboard.html"
+      : profile.role === "admin" ? "./admin-dashboard.html" : "./isporucilac-dashboard.html";
+    window.location.href = target;
+  });
 }
 
 // ---------------------------------------------------------------- ITEMS TABLE

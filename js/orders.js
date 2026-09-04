@@ -4,7 +4,7 @@
 import {
   db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot,
   orderBy, where, query, limit, serverTimestamp, writeBatch, increment,
-  runTransaction,
+  runTransaction, storage, ref, deleteObject,
 } from "./firebase-init.js";
 import { ORDER_STATUS, statusLabel, uid } from "./utils.js";
 import { logAudit } from "./audit.js";
@@ -195,6 +195,35 @@ export async function assignOrder(companyId, orderId, { assignedToUid, assignedT
   });
   await logAudit(companyId, { action: "order_assigned", entity: "Orders", entityId: orderId, actorName, details: assignedToName });
   await createNotification(companyId, { toUid: assignedToUid, event: NOTIF_EVENTS.NOVA_NARUDZBINA, orderId, titleKey: "notif_new_order_title", bodyKey: "notif_new_order_manual_body" });
+}
+
+// --- Brisanje cele narudžbine (Poglavlje "pogrešno kreirana/poslata narudžbina") ---
+// Dozvole: proveravaju se na nivou firestore.rules (canDeleteOrder) — admin sme
+// da obriše bilo koju narudžbinu u bilo kom trenutku; naručilac sme da obriše
+// SAMO svoju narudžbinu dok je u statusu "kreirana" ili "čeka_prihvatanje"
+// (pre nego što je isporučilac prihvati). Brišemo prvo sve podkolekcije, pa tek
+// onda glavni dokument narudžbine — jer pravila za podkolekcije proveravaju
+// stanje narudžbine preko get(), koji mora da nađe dokument narudžbine.
+const ORDER_SUBCOLLECTIONS = ["items", "purchases", "deliveryLocations", "claims", "messages", "attachments"];
+
+export async function deleteOrder(companyId, orderId, { actorUid, actorName, orderNumber }) {
+  // Prvo obriši stvarne fajlove priloga iz Storage-a (Firestore delete ne čisti Storage automatski)
+  const attachmentsSnap = await getDocs(collection(db, "companies", companyId, "orders", orderId, "attachments"));
+  await Promise.all(attachmentsSnap.docs.map(async (d) => {
+    const path = d.data().path;
+    if (!path) return;
+    try { await deleteObject(ref(storage, path)); } catch { /* fajl možda već ne postoji — ignoriši */ }
+  }));
+
+  for (const sub of ORDER_SUBCOLLECTIONS) {
+    const snap = await getDocs(collection(db, "companies", companyId, "orders", orderId, sub));
+    if (!snap.docs.length) continue;
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+  await logAudit(companyId, { action: "order_deleted", entity: "Orders", entityId: orderId, actorUid, actorName, details: orderNumber });
+  await deleteDoc(doc(db, "companies", companyId, "orders", orderId));
 }
 
 // --- Prihvatanje / odbijanje — Poglavlje 2.4, 4.3 ---

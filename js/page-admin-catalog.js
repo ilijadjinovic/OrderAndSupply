@@ -2,7 +2,7 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { getSuppliers } from "./suppliers.js";
-import { addCategory, deleteCategory, getCategories, addProduct, deleteProduct, listenProducts } from "./catalog.js";
+import { addCategory, deleteCategory, getCategories, addProduct, updateProduct, deleteProduct, listenProducts } from "./catalog.js";
 import { escapeHtml, toast, getParam, ROLES } from "./utils.js";
 
 await loadLang();
@@ -56,12 +56,12 @@ function renderProducts(products, supplierId) {
     });
   });
 
-  // Klik bilo gde na redu (van dugmeta za brisanje) otvara detalje proizvoda —
-  // uključujući polja koja se ne prikazuju direktno u tabeli (npr. barkod).
+  // Klik bilo gde na redu (van dugmeta za brisanje) otvara formu za izmenu —
+  // dostupno i adminu i naručiocu (Poglavlje "Izmena kataloga").
   body.querySelectorAll("tr.row-link").forEach((row) => {
     row.addEventListener("click", () => {
       const product = products.find((x) => x.id === row.dataset.id);
-      if (product) openProductDetail(product);
+      if (product) openProductDetail(product, supplierId);
     });
   });
 }
@@ -69,25 +69,38 @@ function renderProducts(products, supplierId) {
 const productDetailModal = document.getElementById("product-detail-modal");
 document.getElementById("close-product-detail-modal").addEventListener("click", () => productDetailModal.classList.add("hidden"));
 
-function detailRow(label, value, mono = false) {
-  const safe = (value === undefined || value === null || value === "") ? "—" : escapeHtml(String(value));
-  return `<div class="detail-row"><dt>${escapeHtml(label)}</dt><dd${mono ? ' class="mono"' : ""}>${safe}</dd></div>`;
-}
+let editingProduct = null; // { id, supplierId } — proizvod trenutno otvoren u formi za izmenu
 
-function openProductDetail(product) {
-  const catName = categories.find((c) => c.id === product.categoryId)?.name || "—";
+function openProductDetail(product, supplierId) {
+  editingProduct = { id: product.id, supplierId };
   document.getElementById("product-detail-title").textContent = product.name;
-  document.getElementById("product-detail-body").innerHTML = [
-    detailRow(t("name"), product.name),
-    detailRow(t("code"), product.code, true),
-    detailRow(t("barcode"), product.barcode, true),
-    detailRow(t("unit"), product.unit),
-    detailRow(t("category"), catName),
-    detailRow(t("vat_rate"), product.vatRate != null ? `${product.vatRate}%` : null),
-    detailRow(t("min_quantity"), product.minQuantity),
-  ].join("");
+  document.getElementById("pd-name").value = product.name || "";
+  document.getElementById("pd-code").value = product.code || "";
+  document.getElementById("pd-barcode").value = product.barcode || "";
+  document.getElementById("pd-unit").value = product.unit || "kom";
+  document.getElementById("pd-vat").value = product.vatRate ?? 20;
+  document.getElementById("pd-min").value = product.minQuantity ?? 1;
+  const catSelect = document.getElementById("pd-category");
+  catSelect.innerHTML = categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") || `<option value="">${t("no_category")}</option>`;
+  catSelect.value = product.categoryId || "";
   productDetailModal.classList.remove("hidden");
 }
+
+document.getElementById("product-edit-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!editingProduct) return;
+  await updateProduct(companyId, editingProduct.supplierId, editingProduct.id, {
+    name: document.getElementById("pd-name").value.trim(),
+    code: document.getElementById("pd-code").value.trim(),
+    barcode: document.getElementById("pd-barcode").value.trim(),
+    unit: document.getElementById("pd-unit").value.trim(),
+    categoryId: document.getElementById("pd-category").value,
+    vatRate: Number(document.getElementById("pd-vat").value) || 0,
+    minQuantity: Number(document.getElementById("pd-min").value) || 1,
+  });
+  toast(t("toast_product_updated"), "success");
+  productDetailModal.classList.add("hidden");
+});
 
 function fillCategorySelect() {
   document.getElementById("p-category").innerHTML = categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") || `<option value="">${t("no_category")}</option>`;

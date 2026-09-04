@@ -22,6 +22,18 @@ service cloud.firestore {
     function isNarucilacOf(companyId) { return isCompanyMember(companyId) && myRole() == 'narucilac'; }
     function isIsporucilacOf(companyId) { return isCompanyMember(companyId) && myRole() == 'isporucilac'; }
 
+    // Brisanje CELE narudžbine (ne samo odbijanje): admin sme uvek i bilo koju;
+    // naručilac sme SAMO svoju, i SAMO dok nije prihvaćena od isporučioca
+    // (status 'kreirana' ili 'ceka_prihvatanje'). Koristi get() da pročita
+    // stanje narudžbine — zato podkolekcije MORAJU da se obrišu PRE glavnog
+    // dokumenta narudžbine (vidi orders.js — deleteOrder).
+    function canDeleteOrder(companyId, orderId) {
+      let o = get(/databases/$(database)/documents/companies/$(companyId)/orders/$(orderId)).data;
+      return isAdminOf(companyId)
+        || (isNarucilacOf(companyId) && o.createdByUid == request.auth.uid
+            && o.status in ['kreirana', 'ceka_prihvatanje']);
+    }
+
     // --- Platformska podešavanja (Master Admin) ---
     match /platform/{docId} {
       allow read: if isSignedIn();
@@ -80,10 +92,12 @@ service cloud.firestore {
         match /products/{productId} {
           allow read: if isCompanyMember(companyId);
           // Naručilac sme da KREIRA proizvod (auto-katalogizacija stavki iz slobodnog
-          // unosa pri kreiranju narudžbine — vidi page-new-order.js). Izmenu i brisanje
-          // i dalje radi samo admin, da naručilac ne bi menjao/brisao tuđe stavke.
+          // unosa pri kreiranju narudžbine — vidi page-new-order.js). Naručilac i admin
+          // smeju da IZMENE postojeći proizvod (npr. ispravka naziva/šifre/PDV-a); brisanje
+          // ostaje isključivo admin, da naručilac ne bi trajno uklonio tuđe stavke.
           allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
-          allow update, delete: if isAdminOf(companyId);
+          allow update: if isAdminOf(companyId) || isNarucilacOf(companyId);
+          allow delete: if isAdminOf(companyId);
         }
       }
 
@@ -104,7 +118,7 @@ service cloud.firestore {
         allow read: if isCompanyMember(companyId);
         allow create: if isNarucilacOf(companyId);
         allow update: if isAdminOf(companyId) || isNarucilacOf(companyId) || isIsporucilacOf(companyId);
-        allow delete: if isAdminOf(companyId);
+        allow delete: if canDeleteOrder(companyId, orderId);
 
         match /items/{itemId} {
           allow read: if isCompanyMember(companyId);
@@ -125,10 +139,14 @@ service cloud.firestore {
         match /messages/{msgId} {
           allow read: if isCompanyMember(companyId);
           allow create: if isCompanyMember(companyId);
+          // Delete samo kao deo brisanja cele narudžbine (vidi orders.js — deleteOrder)
+          allow delete: if canDeleteOrder(companyId, orderId);
         }
         match /attachments/{attId} {
           allow read: if isCompanyMember(companyId);
           allow create: if isCompanyMember(companyId);
+          // Delete samo kao deo brisanja cele narudžbine (vidi orders.js — deleteOrder)
+          allow delete: if canDeleteOrder(companyId, orderId);
         }
       }
 
