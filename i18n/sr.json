@@ -266,6 +266,7 @@
   "toast_add_at_least_one_item": "Dodajte bar jedan artikal.",
   "toast_select_at_least_one_delivery_location": "Izaberite bar jednu lokaciju isporuke.",
   "toast_select_delivery_location_for": "Izaberite lokaciju isporuke za: {name}",
+  "toast_invalid_quantity": "Unesite validnu količinu (veću od 0) za: {name}",
   "toast_select_fulfiller": "Izaberite isporučioca.",
   "toast_order_submitted": "Narudžbina je poslata.",
   "toast_order_submit_error": "Greška pri slanju narudžbine.",

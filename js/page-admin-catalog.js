@@ -39,8 +39,8 @@ function renderProducts(products, supplierId) {
   body.innerHTML = products.map((p) => {
     const catName = categories.find((c) => c.id === p.categoryId)?.name || "—";
     return `<tr class="row-link" data-id="${p.id}" title="${t("details_label")}">
-      <td><strong>${escapeHtml(p.name)}</strong></td>
       <td class="mono">${escapeHtml(p.code || "—")}</td>
+      <td><strong>${escapeHtml(p.name)}</strong></td>
       <td>${escapeHtml(p.unit)}</td>
       <td>${escapeHtml(catName)}</td>
       <td>${p.vatRate}%</td>
@@ -73,7 +73,7 @@ let editingProduct = null; // { id, supplierId } — proizvod trenutno otvoren u
 
 function openProductDetail(product, supplierId) {
   editingProduct = { id: product.id, supplierId };
-  document.getElementById("product-detail-title").textContent = product.name;
+  document.getElementById("product-detail-title").textContent = product.name || product.code || t("details_label");
   document.getElementById("pd-name").value = product.name || "";
   document.getElementById("pd-code").value = product.code || "";
   document.getElementById("pd-barcode").value = product.barcode || "";

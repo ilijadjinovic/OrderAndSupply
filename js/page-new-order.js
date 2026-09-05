@@ -319,7 +319,12 @@ function renderCart() {
         item.deliveryLocationName = opt ? opt.textContent : "";
       });
     }
-    row.querySelector(".cart-qty").addEventListener("input", (e) => { item.quantity = Number(e.target.value) || 0; });
+    row.querySelector(".cart-qty").addEventListener("input", (e) => {
+      // Količina ne sme ostati prazna/0 — ako je uneta vrednost nevalidna, zadrži poslednju važeću.
+      const val = Number(e.target.value);
+      if (val > 0) { item.quantity = val; }
+    });
+    row.querySelector(".cart-qty").addEventListener("blur", (e) => { e.target.value = item.quantity; });
     row.querySelector(".cart-note").addEventListener("input", (e) => { item.note = e.target.value; });
     row.querySelector("button[data-remove]").addEventListener("click", () => {
       cart = cart.filter((i) => i.tempId !== item.tempId);
@@ -347,6 +352,10 @@ document.getElementById("save-as-type").addEventListener("change", (e) => {
 // --- Submit ---
 document.getElementById("submit-order").addEventListener("click", async () => {
   if (!cart.length) { toast(t("toast_add_at_least_one_item"), "error"); return; }
+  const missingName = cart.find((i) => !i.productName || !i.productName.trim());
+  if (missingName) { toast(t("toast_enter_item_name"), "error"); return; }
+  const invalidQty = cart.find((i) => !(i.quantity > 0));
+  if (invalidQty) { toast(t("toast_invalid_quantity", { name: invalidQty.productName }), "error"); return; }
   if (!chosenDeliveryLocations.length) { toast(t("toast_select_at_least_one_delivery_location"), "error"); return; }
   const missingDelivery = cart.find((i) => !i.deliveryLocationId);
   if (missingDelivery) { toast(t("toast_select_delivery_location_for", { name: missingDelivery.productName }), "error"); return; }

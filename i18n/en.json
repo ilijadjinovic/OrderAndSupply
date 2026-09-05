@@ -266,6 +266,7 @@
   "toast_add_at_least_one_item": "Add at least one item.",
   "toast_select_at_least_one_delivery_location": "Select at least one delivery location.",
   "toast_select_delivery_location_for": "Select a delivery location for: {name}",
+  "toast_invalid_quantity": "Enter a valid quantity (greater than 0) for: {name}",
   "toast_select_fulfiller": "Select a fulfiller.",
   "toast_order_submitted": "Order submitted.",
   "toast_order_submit_error": "Error submitting the order.",
