@@ -231,10 +231,11 @@ function drawSupplierSection(pdf, group, y, pickupAddressMap) {
   });
 
   const cols = [
-    [t("product_label"), 66],
+    [t("code"), 22],
+    [t("product_label"), 54],
     [t("quantity"), 22],
-    [t("delivery_location_label"), 46],
-    [t("note"), 46],
+    [t("delivery_location_label"), 41],
+    [t("note"), 41],
   ];
 
   locGroups.forEach((g) => {
@@ -249,6 +250,7 @@ function drawSupplierSection(pdf, group, y, pickupAddressMap) {
     y = drawTableHeader(pdf, cols, y);
     g.items.forEach((it, i) => {
       y = drawTableRowWrapped(pdf, cols, [
+        it.code || "—",
         it.productName,
         `${it.quantity} ${it.unit}`,
         it.deliveryLocationName || "—",

@@ -72,7 +72,7 @@ async function getNextOrderNumber(companyId) {
   return `NAR-${datum}-${redniBroj}/${gg}`;
 }
 
-// items: [{supplierId, supplierName, productId, productName, unit, quantity, note, priority, pickupLocationId}]
+// items: [{supplierId, supplierName, productId, productName, code, unit, quantity, note, priority, pickupLocationId}]
 // deliveryLocations: [{locationId, locationName, itemProductIds:[...]}]
 export async function createOrder(companyId, {
   createdByUid, createdByName, priority, items, deliveryLocations, assignmentMode, recurring = null,

@@ -7,7 +7,7 @@ import { logAudit } from "./audit.js";
 
 const templatesCol = (companyId) => collection(db, "companies", companyId, "templates");
 
-// items: [{supplierId, supplierName, productId, productName, unit, quantity, note}]
+// items: [{supplierId, supplierName, productId, productName, code, unit, quantity, note}]
 export async function saveTemplate(companyId, { name, type, items, ownerUid, ownerScope = "lokacija",
   recurringDays = [], recurringLocationId = null, actorName }) {
   const ref = await addDoc(templatesCol(companyId), {

@@ -2,7 +2,7 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { getSuppliers, getSupplierLocations } from "./suppliers.js";
-import { getProducts, addProduct } from "./catalog.js";
+import { getProducts, addProduct, updateProduct } from "./catalog.js";
 import { getLocations } from "./locations.js";
 import { createOrder, assignOrder } from "./orders.js";
 import { getIsporucioci } from "./users.js";
@@ -75,9 +75,9 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   const supplier = suppliers.find((s) => s.id === supplierId);
   productList.innerHTML = products.map((p) => `
     <tr data-product-id="${p.id}" data-name="${escapeHtml(p.name.toLowerCase())}">
-      <td><strong>${escapeHtml(p.name)}</strong></td>
+      <td><input type="text" class="row-code-input mono" value="${escapeHtml(p.code || "")}" placeholder="${t('code_optional_placeholder')}" style="width:90px;" /></td>
+      <td><input type="text" class="row-name-input" value="${escapeHtml(p.name)}" style="min-width:160px;" /></td>
       <td>${escapeHtml(p.unit)}</td>
-      <td class="mono">${escapeHtml(p.code || "—")}</td>
       <td><input type="number" min="0.1" step="0.1" value="1" class="qty-input" style="width:80px;" /></td>
       <td><input type="text" placeholder="${t('note')}" class="note-input" /></td>
       <td><button class="btn btn-sm btn-amber" data-add="${p.id}">+ ${t("add")}</button></td>
@@ -90,15 +90,29 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
       const product = products.find((p) => p.id === btn.dataset.add);
       const qty = Number(row.querySelector(".qty-input").value) || 1;
       const note = row.querySelector(".note-input").value.trim();
+      const editedCode = row.querySelector(".row-code-input").value.trim();
+      const editedName = row.querySelector(".row-name-input").value.trim() || product.name;
       const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
       cart.push({
         tempId: uid("item"), supplierId, supplierName: supplier?.name || t("supplier"),
-        productId: product.id, productName: product.name, unit: product.unit, quantity: qty, note,
+        productId: product.id, productName: editedName, code: editedCode, unit: product.unit, quantity: qty, note,
         pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : t("any_location"),
         deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
       });
-      toast(t("toast_item_added", { name: product.name }), "success");
+      toast(t("toast_item_added", { name: editedName }), "success");
       renderCart();
+
+      // Ako je korisnik ispravio šifru i/ili naziv u odnosu na katalog (npr. razdvojio
+      // šifru koja je bila slepljena sa nazivom), sačuvaj ispravku i u katalogu
+      // dobavljača, da se greška ne ponavlja pri sledećoj narudžbini.
+      if (editedCode !== (product.code || "") || editedName !== product.name) {
+        updateProduct(companyId, supplierId, product.id, { code: editedCode, name: editedName })
+          .then(() => {
+            product.code = editedCode; product.name = editedName;
+            toast(t("toast_catalog_entry_updated", { name: editedName }), "success");
+          })
+          .catch((err) => console.error(err));
+      }
     });
   });
 });
@@ -140,28 +154,30 @@ document.getElementById("manual-add-btn").addEventListener("click", () => {
 
   const name = document.getElementById("manual-name").value.trim();
   if (!name) { toast(t("toast_enter_item_name"), "error"); return; }
+  const code = document.getElementById("manual-code").value.trim();
   const qty = Number(document.getElementById("manual-qty").value) || 1;
   const unit = document.getElementById("manual-unit").value.trim() || "kom";
   const note = document.getElementById("manual-note").value.trim();
 
-  processManualItem({ supplierId, name, qty, unit, note });
+  processManualItem({ supplierId, name, code, qty, unit, note });
 });
 
 function resetManualEntryForm() {
   document.getElementById("manual-name").value = "";
+  document.getElementById("manual-code").value = "";
   document.getElementById("manual-qty").value = "1";
   document.getElementById("manual-note").value = "";
   document.getElementById("manual-name").focus();
 }
 
-function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, productId = "", createInCatalog = false }) {
+function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, productId = "", code = "", createInCatalog = false }) {
   const supplier = suppliers.find((s) => s.id === supplierId);
   const pickupSelect = document.getElementById("pickup-select");
   const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
 
   const newItem = {
     tempId: uid("item"), supplierId, supplierName: supplier?.name || t("supplier"),
-    productId, productName: name, unit, quantity: qty, note,
+    productId, productName: name, code, unit, quantity: qty, note,
     pickupLocationId: pickupSelect.value, pickupLocationName: pickupOpt ? pickupOpt.textContent : t("any_location"),
     deliveryLocationId: chosenDeliveryLocations[0]?.locationId || "", deliveryLocationName: chosenDeliveryLocations[0]?.locationName || "",
     manualEntry: !productId,
@@ -170,9 +186,9 @@ function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, 
   renderCart();
 
   if (createInCatalog) {
-    addProduct(companyId, supplierId, { name, unit, actorName, createdBy: uidValue, source: "auto_from_order" })
+    addProduct(companyId, supplierId, { name, code, unit, actorName, createdBy: uidValue, source: "auto_from_order" })
       .then((newId) => {
-        currentSupplierCatalog.push({ id: newId, name, unit });
+        currentSupplierCatalog.push({ id: newId, name, code, unit });
         newItem.productId = newId;
         newItem.manualEntry = false;
         renderCart(); // osveži badge "Ručni unos" pošto je stavka sad povezana sa katalogom
@@ -193,27 +209,33 @@ function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, 
 
 let pendingSimilarItem = null; // { supplierId, name, qty, unit, note, existingProduct }
 
-function processManualItem({ supplierId, name, qty, unit, note }) {
+function processManualItem({ supplierId, name, code, qty, unit, note }) {
   const match = findClosestCatalogMatch(name, currentSupplierCatalog);
 
   if (match?.type === "exact") {
     // Tačan duplikat -> ne upisujemo novi proizvod u katalog, samo povežemo stavku
     // sa postojećim proizvodom i dodamo je u narudžbenicu (bez pitanja korisniku).
+    // Ako korisnik sada unese šifru za proizvod koji je u katalogu bez nje,
+    // popuni je (ne prepisuje šifru koja već postoji).
+    const finalCode = match.product.code || code || "";
+    if (code && !match.product.code) {
+      updateProduct(companyId, supplierId, match.product.id, { code }).then(() => { match.product.code = code; }).catch((err) => console.error(err));
+    }
     addManualItemToCartAndOptionallyCatalog({
-      supplierId, name: match.product.name, qty, unit, note, productId: match.product.id, createInCatalog: false,
+      supplierId, name: match.product.name, qty, unit, note, productId: match.product.id, code: finalCode, createInCatalog: false,
     });
     resetManualEntryForm();
     return;
   }
 
   if (match?.type === "similar") {
-    pendingSimilarItem = { supplierId, name, qty, unit, note, existingProduct: match.product };
+    pendingSimilarItem = { supplierId, name, code, qty, unit, note, existingProduct: match.product };
     openSimilarItemModal(match.product.name, name);
     return; // sačekaj odgovor korisnika (DODAJ / ODBACI STAVKU)
   }
 
   // Nema poklapanja -> nova stavka, automatski se katalogizuje.
-  addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, createInCatalog: true });
+  addManualItemToCartAndOptionallyCatalog({ supplierId, name, code, qty, unit, note, createInCatalog: true });
   resetManualEntryForm();
 }
 
@@ -235,8 +257,8 @@ document.getElementById("similar-item-discard-btn").addEventListener("click", ()
 });
 document.getElementById("similar-item-add-btn").addEventListener("click", () => {
   if (!pendingSimilarItem) return;
-  const { supplierId, name, qty, unit, note } = pendingSimilarItem;
-  addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, createInCatalog: true });
+  const { supplierId, name, code, qty, unit, note } = pendingSimilarItem;
+  addManualItemToCartAndOptionallyCatalog({ supplierId, name, code, qty, unit, note, createInCatalog: true });
   closeSimilarItemModal();
   resetManualEntryForm();
 });
@@ -292,8 +314,13 @@ function renderCart() {
     <div class="supplier-block">
       <div class="supplier-block-head"><h3>${escapeHtml(group.name)}</h3><span class="muted">${t("items_count", { count: group.items.length })}</span></div>
       ${group.items.map((item) => `
-        <div class="item-row" data-temp-id="${item.tempId}">
-          <div><strong>${escapeHtml(item.productName)}</strong>${item.manualEntry ? ` <span class="badge badge-gray">${t("manual_entry_badge")}</span>` : ""}<div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div></div>
+        <div class="item-row" data-temp-id="${item.tempId}" style="grid-template-columns:80px 1.5fr 90px 110px 1fr 90px auto;">
+          <input type="text" class="cart-code mono" value="${escapeHtml(item.code || "")}" placeholder="${t('code_optional_placeholder')}" />
+          <div>
+            <input type="text" class="cart-name" value="${escapeHtml(item.productName)}" style="width:100%;font-weight:600;" />
+            ${item.manualEntry ? ` <span class="badge badge-gray">${t("manual_entry_badge")}</span>` : ""}
+            <div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div>
+          </div>
           <input type="number" min="0.1" step="0.1" value="${item.quantity}" class="cart-qty" />
           <span class="muted">${escapeHtml(item.unit)}</span>
           <input type="text" value="${escapeHtml(item.note)}" placeholder="${t('note')}" class="cart-note" />
@@ -326,11 +353,36 @@ function renderCart() {
     });
     row.querySelector(".cart-qty").addEventListener("blur", (e) => { e.target.value = item.quantity; });
     row.querySelector(".cart-note").addEventListener("input", (e) => { item.note = e.target.value; });
+    // Šifra i naziv se mogu ispraviti i ovde (npr. kad se šifra slučajno slepi sa
+    // nazivom pri slobodnom unosu) — na blur se ispravka upisuje i u katalog
+    // dobavljača ako je stavka povezana sa postojećim proizvodom, da se ne ponavlja.
+    row.querySelector(".cart-code").addEventListener("input", (e) => { item.code = e.target.value; });
+    row.querySelector(".cart-name").addEventListener("input", (e) => { item.productName = e.target.value; });
+    row.querySelector(".cart-code").addEventListener("blur", () => syncItemCorrectionToCatalog(item));
+    row.querySelector(".cart-name").addEventListener("blur", () => syncItemCorrectionToCatalog(item));
     row.querySelector("button[data-remove]").addEventListener("click", () => {
       cart = cart.filter((i) => i.tempId !== item.tempId);
       renderCart();
     });
   });
+}
+
+// Ako je stavka povezana sa proizvodom iz kataloga i korisnik je ovde ispravio
+// šifru/naziv, upiši ispravku i u katalog dobavljača (ne dira stavke bez productId
+// — ručni unos koji nikad nije katalogizovan).
+function syncItemCorrectionToCatalog(item) {
+  if (!item.productId) return;
+  const catalogEntry = currentSupplierCatalog.find((p) => p.id === item.productId);
+  const currentCode = catalogEntry?.code || "";
+  const currentName = catalogEntry?.name || "";
+  const newName = item.productName.trim() || currentName;
+  if (item.code === currentCode && newName === currentName) return;
+  updateProduct(companyId, item.supplierId, item.productId, { code: item.code, name: newName })
+    .then(() => {
+      if (catalogEntry) { catalogEntry.code = item.code; catalogEntry.name = newName; }
+      toast(t("toast_catalog_entry_updated", { name: newName }), "success");
+    })
+    .catch((err) => console.error(err));
 }
 
 // --- Template loading ---

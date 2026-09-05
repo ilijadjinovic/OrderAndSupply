@@ -218,7 +218,7 @@ function renderItemsTable() {
   const body = document.getElementById("items-body");
   const canEdit = canEditOrder();
   if (!items.length && !canEdit) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="8">${t("no_items")}</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="9">${t("no_items")}</td></tr>`;
     renderAddItemPanel(canEdit);
     return;
   }
@@ -242,6 +242,7 @@ function renderItemsTable() {
   body.innerHTML = (items.length ? items : [null]).filter(Boolean).map((i, idx) => `
     <tr data-item-id="${i.id}">
       <td class="col-num muted">${idx + 1}</td>
+      <td class="mono">${escapeHtml(i.code || "—")}</td>
       <td><strong>${escapeHtml(i.productName)}</strong></td>
       <td>${escapeHtml(i.supplierName)}</td>
       <td>${i.pickupLocationId && i.pickupLocationId !== "any" ? escapeHtml(i.pickupLocationName || "—") : "—"}</td>
@@ -258,7 +259,7 @@ function renderItemsTable() {
         ${canEdit ? `<button class="btn btn-sm btn-ghost" data-remove="${i.id}">✕ ${t("remove")}</button>` : ""}
       </td>
     </tr>
-  `).join("") || `<tr class="empty-row"><td colspan="8">${t("no_items")}</td></tr>`;
+  `).join("") || `<tr class="empty-row"><td colspan="9">${t("no_items")}</td></tr>`;
 
   body.querySelectorAll("button[data-remove]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -346,14 +347,14 @@ function renderAddItemPanel(canEdit) {
       <tr>
         <td>${escapeHtml(p.name)} <span class="muted">(${escapeHtml(p.unit)})</span></td>
         <td style="width:90px;"><input type="number" class="ai-add-qty mono" min="1" value="1" style="width:70px;" /></td>
-        <td style="width:100px;"><button type="button" class="btn btn-sm btn-amber" data-add-product="${p.id}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}">+ ${t("add")}</button></td>
+        <td style="width:100px;"><button type="button" class="btn btn-sm btn-amber" data-add-product="${p.id}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}" data-code="${escapeHtml(p.code || "")}">+ ${t("add")}</button></td>
       </tr>
     `).join("");
     productListBody.querySelectorAll("button[data-add-product]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const row = btn.closest("tr");
         const qty = Math.max(1, Number(row.querySelector(".ai-add-qty").value) || 1);
-        await submitNewItem({ productId: btn.dataset.addProduct, productName: btn.dataset.name, unit: btn.dataset.unit, quantity: qty, note: "" });
+        await submitNewItem({ productId: btn.dataset.addProduct, productName: btn.dataset.name, code: btn.dataset.code || "", unit: btn.dataset.unit, quantity: qty, note: "" });
       });
     });
   }
@@ -380,12 +381,12 @@ function renderAddItemPanel(canEdit) {
     document.getElementById("ai-manual-qty").value = 1;
   });
 
-  async function submitNewItem({ productId, productName, unit, quantity, note, manualEntry = false }) {
+  async function submitNewItem({ productId, productName, code = "", unit, quantity, note, manualEntry = false }) {
     const supplierOpt = supplierSelect.options[supplierSelect.selectedIndex];
     const deliveryOpt = deliverySelect.options[deliverySelect.selectedIndex];
     await addOrderItem(companyId, orderId, {
       supplierId: supplierSelect.value, supplierName: supplierOpt.dataset.name,
-      productId, productName, unit, quantity, note, manualEntry,
+      productId, productName, code, unit, quantity, note, manualEntry,
       pickupLocationId: "any", pickupLocationName: t("any_location"),
       deliveryLocationId: deliveryOpt.value, deliveryLocationName: deliveryOpt.value === "any" ? t("any_location") : deliveryOpt.dataset.name,
     });
@@ -425,11 +426,12 @@ function renderPurchasesPanel() {
       locGroups[locIndex[key]].items.push(i);
     });
 
-    const itemRowHtml = (i) => {
+    const itemRowHtml = (i, idx) => {
       const statusLine = { kupljeno: `<div class="item-purchase-status-line st-kupljeno">✅ ${t("item_status_purchased")}</div>`, nije_pronadjeno: `<div class="item-purchase-status-line st-nije">❌ ${t("item_status_not_found")}</div>`, zamena: `<div class="item-purchase-status-line st-zamena">↺ ${t("substitution")}</div>` }[i.purchaseStatus] || "";
       return `
-          <div class="item-row" data-item-id="${i.id}" style="grid-template-columns:1.4fr 90px 1fr auto;">
-            <div>${escapeHtml(i.productName)} <span class="muted">(${i.quantity} ${escapeHtml(i.unit)})</span>${statusLine}</div>
+          <div class="item-row" data-item-id="${i.id}" style="grid-template-columns:26px 1.4fr 90px 1fr auto;">
+            <div class="muted">${idx}.</div>
+            <div>${i.code ? `<span class="mono muted">[${escapeHtml(i.code)}]</span> ` : ""}${escapeHtml(i.productName)} <span class="muted">(${i.quantity} ${escapeHtml(i.unit)})</span>${statusLine}</div>
             <input type="number" class="purchase-qty" value="${i.purchasedQty || i.quantity}" ${showControls ? "" : "disabled"} style="${showControls ? "" : "opacity:.5;"}" />
             <input type="text" class="purchase-substitute" placeholder="${t('substitute_name_placeholder')}" value="${escapeHtml(i.substituteName || "")}" ${showControls ? "" : "disabled"} style="${showControls ? "" : "opacity:.5;"}" />
             <div style="display:flex;gap:4px;">
@@ -442,12 +444,15 @@ function renderPurchasesPanel() {
           </div>`;
     };
 
+    // Redni broj artikla kreće od 1 za SVAKOG dobavljača (nastavlja se kroz sve
+    // lokacije preuzimanja tog dobavljača, ne resetuje se po lokaciji).
+    let itemCounter = 0;
     const locGroupsHtml = locGroups.map((g) => `
         <div class="pickup-location-head" style="margin:12px 0 6px;padding-top:10px;border-top:1px dashed var(--line);">
           <div style="font-weight:600;">📍 ${escapeHtml(g.name)}</div>
           ${g.address ? `<div class="muted" style="font-size:12px;">${escapeHtml(g.address)}</div>` : ""}
         </div>
-        ${g.items.map(itemRowHtml).join("")}
+        ${g.items.map((i) => itemRowHtml(i, ++itemCounter)).join("")}
     `).join("");
 
     return `
