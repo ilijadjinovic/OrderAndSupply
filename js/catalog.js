@@ -35,6 +35,19 @@ export async function addProduct(companyId, supplierId, {
 export function updateProduct(companyId, supplierId, productId, data) {
   return updateDoc(doc(db, "companies", companyId, "suppliers", supplierId, "products", productId), data);
 }
+
+// Masovna izmena zajedničkih polja (kategorija, JM, PDV, min. količina...) za više
+// izabranih proizvoda odjednom — vidi "Katalog — masovna izmena" u admin-catalog.js.
+// items: [{ id, name }] (name samo radi audit loga); data: polja koja se menjaju kod SVIH.
+export async function bulkUpdateProducts(companyId, supplierId, items, data, actorName) {
+  await Promise.all(items.map((item) =>
+    updateDoc(doc(db, "companies", companyId, "suppliers", supplierId, "products", item.id), data)
+  ));
+  await logAudit(companyId, {
+    action: "products_bulk_updated", entity: "SupProducts", entityId: supplierId, actorName,
+    details: `${items.length} × ${items.map((i) => i.name).join(", ")}`,
+  });
+}
 export function deleteProduct(companyId, supplierId, productId) {
   return deleteDoc(doc(db, "companies", companyId, "suppliers", supplierId, "products", productId));
 }

@@ -507,3 +507,8 @@ table.data-table.table-fixed th { white-space: normal; }
   .logout-label { display: none; }
   #logout-btn { padding: 8px 10px; }
 }
+
+/* Masovna izmena kataloga (bulk-edit) — traka koja se pojavljuje kad su
+   izabrani proizvodi u tabeli kataloga (admin-catalog.html). */
+.bulk-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 16px; background: var(--color-primary-soft, #fff4de); }
+.bulk-edit-bar #bulk-edit-count { font-weight: 600; }

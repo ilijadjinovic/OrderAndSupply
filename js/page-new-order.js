@@ -2,7 +2,7 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { getSuppliers, getSupplierLocations } from "./suppliers.js";
-import { getProducts, addProduct, updateProduct } from "./catalog.js";
+import { getProducts, addProduct, updateProduct, getCategories } from "./catalog.js";
 import { getLocations } from "./locations.js";
 import { createOrder, assignOrder } from "./orders.js";
 import { getIsporucioci } from "./users.js";
@@ -13,7 +13,7 @@ import { escapeHtml, toast, uid, getParam, findClosestCatalogMatch } from "./uti
 await loadLang();
 
 let companyId, uidValue, actorName;
-let suppliers = [], companyLocations = [], assignmentMode = "admin_bira";
+let suppliers = [], companyLocations = [], assignmentMode = "admin_bira", categories = [];
 let cart = [];               // {tempId, supplierId, supplierName, productId, productName, unit, quantity, note, pickupLocationId, pickupLocationName, deliveryLocationId, deliveryLocationName}
 let chosenDeliveryLocations = []; // {locationId, locationName}
 
@@ -30,6 +30,12 @@ requireAuth(["narucilac"], async (user, profile) => {
 
   suppliers = await getSuppliers(companyId);
   document.getElementById("supplier-select").innerHTML += suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+
+  // Kategorije — koriste se i za filter u katalogu i za selekciju kategorije pri
+  // slobodnom unosu (da se novi artikal odmah katalogizuje sa tačnom kategorijom).
+  categories = await getCategories(companyId);
+  document.getElementById("product-category-filter").innerHTML += categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  document.getElementById("manual-category").innerHTML += categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
 
   companyLocations = await getLocations(companyId);
   renderDeliveryLocationOptions();
@@ -65,6 +71,7 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   pickupSelect.innerHTML = `<option value="any">${t("any_location")}</option>`;
   productList.innerHTML = `<tr class="empty-row"><td colspan="6">${t("select_supplier_prompt")}</td></tr>`;
   searchInput.value = "";
+  document.getElementById("product-category-filter").value = "";
   if (!supplierId) return;
 
   const [locs, products] = await Promise.all([getSupplierLocations(companyId, supplierId), getProducts(companyId, supplierId)]);
@@ -74,7 +81,7 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   if (!products.length) { productList.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_products_in_catalog")}</td></tr>`; return; }
   const supplier = suppliers.find((s) => s.id === supplierId);
   productList.innerHTML = products.map((p) => `
-    <tr data-product-id="${p.id}" data-name="${escapeHtml(p.name.toLowerCase())}">
+    <tr data-product-id="${p.id}" data-name="${escapeHtml(p.name.toLowerCase())}" data-category-id="${escapeHtml(p.categoryId || "")}">
       <td><input type="text" class="row-code-input mono" value="${escapeHtml(p.code || "")}" placeholder="${t('code_optional_placeholder')}" style="width:90px;" /></td>
       <td><input type="text" class="row-name-input" value="${escapeHtml(p.name)}" style="min-width:160px;" /></td>
       <td>${escapeHtml(p.unit)}</td>
@@ -117,18 +124,26 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   });
 });
 
-// --- Pretraga kataloga (filtrira tabelu po nazivu, ne dira već unete količine/napomene) ---
-document.getElementById("product-search").addEventListener("input", (e) => {
-  const term = e.target.value.trim().toLowerCase();
+// --- Pretraga + filter po kategoriji (filtrira tabelu, ne dira već unete
+// količine/napomene). Kombinuju se — red mora da zadovolji I termin pretrage I
+// izabranu kategoriju (ako je izabrana). Korisno kad se radi samo sa jednom
+// kategorijom pa nema potrebe da se sve ostalo vuče kroz listu. ---
+function applyProductListFilter() {
+  const term = document.getElementById("product-search").value.trim().toLowerCase();
+  const categoryId = document.getElementById("product-category-filter").value;
   let anyVisible = false;
   document.querySelectorAll("#product-list tr[data-product-id]").forEach((row) => {
-    const match = !term || row.dataset.name.includes(term);
+    const matchesTerm = !term || row.dataset.name.includes(term);
+    const matchesCategory = !categoryId || row.dataset.categoryId === categoryId;
+    const match = matchesTerm && matchesCategory;
     row.classList.toggle("hidden", !match);
     if (match) anyVisible = true;
   });
   const emptyRow = document.getElementById("product-search-empty");
   if (emptyRow) emptyRow.classList.toggle("hidden", anyVisible);
-});
+}
+document.getElementById("product-search").addEventListener("input", applyProductListFilter);
+document.getElementById("product-category-filter").addEventListener("change", applyProductListFilter);
 
 // --- Entry mode tabs (Iz kataloga / Slobodan unos) ---
 document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
@@ -158,10 +173,14 @@ document.getElementById("manual-add-btn").addEventListener("click", () => {
   const qty = Number(document.getElementById("manual-qty").value) || 1;
   const unit = document.getElementById("manual-unit").value.trim() || "kom";
   const note = document.getElementById("manual-note").value.trim();
+  const categoryId = document.getElementById("manual-category").value;
 
-  processManualItem({ supplierId, name, code, qty, unit, note });
+  processManualItem({ supplierId, name, code, qty, unit, note, categoryId });
 });
 
+// Napomena: "Jedinica mere" i "Kategorija" se NAMERNO ne resetuju posle svakog
+// dodavanja — ostaju izabrani dok korisnik ručno ne promeni, isto kao JM, jer
+// se obično unosi više artikala iz iste kategorije zaredom.
 function resetManualEntryForm() {
   document.getElementById("manual-name").value = "";
   document.getElementById("manual-code").value = "";
@@ -170,7 +189,7 @@ function resetManualEntryForm() {
   document.getElementById("manual-name").focus();
 }
 
-function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, productId = "", code = "", createInCatalog = false }) {
+function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, productId = "", code = "", categoryId = "", createInCatalog = false }) {
   const supplier = suppliers.find((s) => s.id === supplierId);
   const pickupSelect = document.getElementById("pickup-select");
   const pickupOpt = pickupSelect.options[pickupSelect.selectedIndex];
@@ -186,9 +205,9 @@ function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, 
   renderCart();
 
   if (createInCatalog) {
-    addProduct(companyId, supplierId, { name, code, unit, actorName, createdBy: uidValue, source: "auto_from_order" })
+    addProduct(companyId, supplierId, { name, code, unit, categoryId, actorName, createdBy: uidValue, source: "auto_from_order" })
       .then((newId) => {
-        currentSupplierCatalog.push({ id: newId, name, code, unit });
+        currentSupplierCatalog.push({ id: newId, name, code, unit, categoryId });
         newItem.productId = newId;
         newItem.manualEntry = false;
         renderCart(); // osveži badge "Ručni unos" pošto je stavka sad povezana sa katalogom
@@ -207,9 +226,9 @@ function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, 
   }
 }
 
-let pendingSimilarItem = null; // { supplierId, name, qty, unit, note, existingProduct }
+let pendingSimilarItem = null; // { supplierId, name, qty, unit, note, categoryId, existingProduct }
 
-function processManualItem({ supplierId, name, code, qty, unit, note }) {
+function processManualItem({ supplierId, name, code, qty, unit, note, categoryId = "" }) {
   const match = findClosestCatalogMatch(name, currentSupplierCatalog);
 
   if (match?.type === "exact") {
@@ -229,13 +248,13 @@ function processManualItem({ supplierId, name, code, qty, unit, note }) {
   }
 
   if (match?.type === "similar") {
-    pendingSimilarItem = { supplierId, name, code, qty, unit, note, existingProduct: match.product };
+    pendingSimilarItem = { supplierId, name, code, qty, unit, note, categoryId, existingProduct: match.product };
     openSimilarItemModal(match.product.name, name);
     return; // sačekaj odgovor korisnika (DODAJ / ODBACI STAVKU)
   }
 
-  // Nema poklapanja -> nova stavka, automatski se katalogizuje.
-  addManualItemToCartAndOptionallyCatalog({ supplierId, name, code, qty, unit, note, createInCatalog: true });
+  // Nema poklapanja -> nova stavka, automatski se katalogizuje sa izabranom kategorijom.
+  addManualItemToCartAndOptionallyCatalog({ supplierId, name, code, qty, unit, note, categoryId, createInCatalog: true });
   resetManualEntryForm();
 }
 
@@ -257,8 +276,8 @@ document.getElementById("similar-item-discard-btn").addEventListener("click", ()
 });
 document.getElementById("similar-item-add-btn").addEventListener("click", () => {
   if (!pendingSimilarItem) return;
-  const { supplierId, name, code, qty, unit, note } = pendingSimilarItem;
-  addManualItemToCartAndOptionallyCatalog({ supplierId, name, code, qty, unit, note, createInCatalog: true });
+  const { supplierId, name, code, qty, unit, note, categoryId } = pendingSimilarItem;
+  addManualItemToCartAndOptionallyCatalog({ supplierId, name, code, qty, unit, note, categoryId, createInCatalog: true });
   closeSimilarItemModal();
   resetManualEntryForm();
 });
