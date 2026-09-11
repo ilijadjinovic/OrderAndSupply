@@ -231,6 +231,10 @@ select {
 select option { background: var(--color-surface-2); color: var(--color-text); }
 .hint { font-size: 12px; color: var(--color-text-faint); margin-top: 4px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+/* Red "Naziv / Količina / Jed. mere" kod slobodnog unosa artikla — naziv zauzima
+   preostali prostor, količina i jedinica mere ostaju uske (Poglavlje "slobodan unos"). */
+.form-row.manual-entry-row { grid-template-columns: 1fr 90px 90px; }
+@media (max-width: 880px) { .form-row.manual-entry-row { grid-template-columns: 1fr; } }
 
 /* ── DATE PICKER (kalendar na klik, prikaz dd.mm.gggg.) ───────────────────── */
 input.date-input {
@@ -336,13 +340,19 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-primary)
   overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--color-border);
   -webkit-overflow-scrolling: touch; scrollbar-width: thin;
 }
-table.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/* table-layout: auto + width: max-content sprečava da kolone budu sabijene ispod
+   svoje prirodne širine (npr. "13 kom" da se prelomi u dva reda) — tabela umesto
+   toga postaje šira od omotača i .table-wrap je horizontalno skroluje. */
+table.data-table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: 13.5px; }
 .data-table th {
   text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
   color: var(--color-text-muted); background: var(--color-surface-2); border-bottom: 1px solid var(--color-border);
   padding: 10px 14px; white-space: nowrap;
 }
-.data-table td { padding: 12px 14px; border-bottom: 1px solid var(--color-border); vertical-align: middle; color: var(--color-text); }
+.data-table td { padding: 12px 16px; border-bottom: 1px solid var(--color-border); vertical-align: middle; color: var(--color-text); white-space: nowrap; }
+/* Kolone gde je prelamanje teksta zaista poželjno (npr. duže napomene) zadržavaju
+   staro ponašanje preko klase "wrap-col" na <th>/<td>. */
+.data-table .wrap-col { white-space: normal; word-break: break-word; overflow-wrap: break-word; }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: rgba(255,255,255,0.03); }
 .data-table .row-link { cursor: pointer; }

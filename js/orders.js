@@ -102,16 +102,33 @@ export async function createOrder(companyId, {
   });
 
   const batch = writeBatch(db);
-  items.forEach((item) => {
-    const itemRef = doc(itemsCol(companyId, orderRef.id));
-    batch.set(itemRef, {
-      ...item, purchaseStatus: "na_cekanju", purchasedQty: 0, substituteName: "",
-      createdAt: serverTimestamp(),
-    });
-  });
+
+  // Lokacije isporuke se upisuju PRVE, u sopstvenu podkolekciju narudžbine —
+  // svaki dokument dobija NOVI (Firestore-generisani) ID, različit od
+  // "loc.locationId" (koji je ID iz firmine matične liste lokacija). Zato se
+  // pravi mapa staro-ID -> novo-ID, pa se njome niže preslikava
+  // "item.deliveryLocationId" na stvarni ID podkolekcije ove narudžbine —
+  // u suprotnom bi ekran narudžbine (page-order-detail.js) upoređivao
+  // item.deliveryLocationId sa ID-jevima podkolekcije koji mu ne odgovaraju,
+  // pa se izabrana lokacija isporuke po artiklu ne bi prikazala kao selektovana
+  // (iako je ispravno sačuvano ime i ispravno se štampa na PDF-u).
+  const locationIdMap = {};
   deliveryLocations.forEach((loc) => {
     const locRef = doc(deliveryLocCol(companyId, orderRef.id));
+    if (loc.locationId) locationIdMap[loc.locationId] = locRef.id;
     batch.set(locRef, { ...loc, status: "ceka", createdAt: serverTimestamp() });
+  });
+
+  items.forEach((item) => {
+    const itemRef = doc(itemsCol(companyId, orderRef.id));
+    const mappedDeliveryLocationId = item.deliveryLocationId && item.deliveryLocationId !== "any"
+      ? (locationIdMap[item.deliveryLocationId] || item.deliveryLocationId)
+      : (item.deliveryLocationId || "any");
+    batch.set(itemRef, {
+      ...item, deliveryLocationId: mappedDeliveryLocationId,
+      purchaseStatus: "na_cekanju", purchasedQty: 0, substituteName: "",
+      createdAt: serverTimestamp(),
+    });
   });
   // Jedna "nabavka" (Purchase) po dobavljaču — Poglavlje 5.1
   const bySupplier = {};

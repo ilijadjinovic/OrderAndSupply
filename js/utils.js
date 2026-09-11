@@ -81,6 +81,14 @@ export function uid(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Količina artikla sme da bude samo prirodan broj (1, 2, 3, ...) — bez nule,
+// minusa i decimala. Koristi se svuda gde korisnik unosi/menja količinu, da
+// koraci +/- na <input type="number"> i ručni unos uvek završe na celom broju ≥ 1.
+export function normalizeQuantity(value, fallback = 1) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+
 export function formatDate(ts) {
   if (!ts) return "—";
   const d = ts.toDate ? ts.toDate() : new Date(ts);

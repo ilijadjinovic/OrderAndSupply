@@ -20,7 +20,7 @@ import { getIsporucioci } from "./users.js";
 import { getCompanySettings } from "./settings.js";
 import {
   formatDate, escapeHtml, toast, getParam, badgeClassForStatus,
-  ORDER_STATUS, statusLabel, ORDER_STATUS_FLOW,
+  ORDER_STATUS, statusLabel, ORDER_STATUS_FLOW, normalizeQuantity,
 } from "./utils.js";
 import { getISO, initDatepickers } from "./datepicker.js";
 
@@ -272,7 +272,7 @@ function renderItemsTable() {
     body.querySelectorAll("tr[data-item-id]").forEach((row) => {
       const itemId = row.dataset.itemId;
       row.querySelector(".edit-item-qty")?.addEventListener("change", async (e) => {
-        const qty = Math.max(1, Number(e.target.value) || 1);
+        const qty = normalizeQuantity(e.target.value);
         e.target.value = qty;
         await updateOrderItem(companyId, orderId, itemId, { quantity: qty });
         toast(t("toast_item_updated"), "success");
@@ -326,7 +326,7 @@ function renderAddItemPanel(canEdit) {
     <div id="ai-manual-mode" class="hidden" style="margin-top:10px;">
       <div class="form-row" style="align-items:end;">
         <div class="field"><label>${t("item_name_label")}</label><input type="text" id="ai-manual-name" /></div>
-        <div class="field" style="max-width:100px;"><label>${t("quantity")}</label><input type="number" id="ai-manual-qty" min="1" value="1" /></div>
+        <div class="field" style="max-width:100px;"><label>${t("quantity")}</label><input type="number" id="ai-manual-qty" min="1" step="1" value="1" /></div>
         <div class="field" style="max-width:100px;"><label>${t("unit")}</label><input type="text" id="ai-manual-unit" value="kom" /></div>
       </div>
       <button type="button" class="btn btn-sm btn-amber" id="ai-manual-add-btn" style="margin-top:6px;">${t("add_to_list_btn")}</button>
@@ -346,14 +346,14 @@ function renderAddItemPanel(canEdit) {
     productListBody.innerHTML = filtered.slice(0, 30).map((p) => `
       <tr>
         <td>${escapeHtml(p.name)} <span class="muted">(${escapeHtml(p.unit)})</span></td>
-        <td style="width:90px;"><input type="number" class="ai-add-qty mono" min="1" value="1" style="width:70px;" /></td>
+        <td style="width:90px;"><input type="number" class="ai-add-qty mono" min="1" step="1" value="1" style="width:70px;" /></td>
         <td style="width:100px;"><button type="button" class="btn btn-sm btn-amber" data-add-product="${p.id}" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit)}" data-code="${escapeHtml(p.code || "")}">+ ${t("add")}</button></td>
       </tr>
     `).join("");
     productListBody.querySelectorAll("button[data-add-product]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const row = btn.closest("tr");
-        const qty = Math.max(1, Number(row.querySelector(".ai-add-qty").value) || 1);
+        const qty = normalizeQuantity(row.querySelector(".ai-add-qty").value);
         await submitNewItem({ productId: btn.dataset.addProduct, productName: btn.dataset.name, code: btn.dataset.code || "", unit: btn.dataset.unit, quantity: qty, note: "" });
       });
     });
@@ -373,7 +373,7 @@ function renderAddItemPanel(canEdit) {
 
   document.getElementById("ai-manual-add-btn").addEventListener("click", async () => {
     const name = document.getElementById("ai-manual-name").value.trim();
-    const qty = Math.max(1, Number(document.getElementById("ai-manual-qty").value) || 1);
+    const qty = normalizeQuantity(document.getElementById("ai-manual-qty").value);
     const unit = document.getElementById("ai-manual-unit").value.trim() || "kom";
     if (!name) { toast(t("toast_enter_item_name"), "error"); return; }
     await submitNewItem({ productId: "", productName: name, unit, quantity: qty, note: "", manualEntry: true });

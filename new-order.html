@@ -58,17 +58,19 @@
       <div id="manual-entry" class="hidden">
         <p class="hint" style="margin-bottom:14px;" data-i18n="manual_entry_hint">Za artikle koji nisu u katalogu dobavljača — unesite naziv i količinu; šifru unesite samo ako je znate.</p>
         <div class="form-row">
-          <div class="field"><label data-i18n="item_name_label">Naziv artikla</label><input type="text" id="manual-name" placeholder="npr. Mleko 2,8% — 6 kom" /></div>
           <div class="field" style="max-width:160px;"><label data-i18n="code">Šifra</label><input type="text" id="manual-code" data-i18n-placeholder="code_optional_placeholder" placeholder="opciono" /></div>
-          <div class="field"><label data-i18n="quantity">Količina</label><input type="number" id="manual-qty" min="0.1" step="0.1" value="1" /></div>
+        </div>
+        <div class="form-row manual-entry-row" style="align-items:end;">
+          <div class="field"><label data-i18n="item_name_label">Naziv artikla</label><input type="text" id="manual-name" placeholder="npr. Mleko 2,8% — 6 kom" /></div>
+          <div class="field"><label data-i18n="quantity">Količina</label><input type="number" id="manual-qty" min="1" step="1" max="99999" value="1" /></div>
+          <div class="field"><label data-i18n="unit">Jedinica mere</label><input type="text" id="manual-unit" maxlength="5" placeholder="kom" value="kom" /></div>
         </div>
         <div class="form-row">
-          <div class="field"><label data-i18n="unit">Jedinica mere</label><input type="text" id="manual-unit" placeholder="kom" value="kom" /></div>
-          <div class="field"><label data-i18n="note">Napomena</label><input type="text" id="manual-note" placeholder="npr. Imlek ili Moja Kravica" /></div>
           <div class="field">
             <label data-i18n="category">Kategorija</label>
             <select id="manual-category"><option value="" data-i18n="no_category">Bez kategorije</option></select>
           </div>
+          <div class="field"><label data-i18n="note">Napomena</label><input type="text" id="manual-note" placeholder="npr. Imlek ili Moja Kravica" /></div>
         </div>
         <p class="hint" style="margin-bottom:14px;" data-i18n="manual_category_hint">Kategorija se čuva zajedno sa artiklom kad se doda u katalog dobavljača. Izbor ostaje isti dok ga ručno ne promenite.</p>
         <button type="button" class="btn btn-sm btn-amber" id="manual-add-btn" data-i18n="add_to_list_btn">+ Dodaj u listu</button>

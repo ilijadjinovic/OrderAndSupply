@@ -8,7 +8,7 @@ import { createOrder, assignOrder } from "./orders.js";
 import { getIsporucioci } from "./users.js";
 import { getTemplates, saveTemplate } from "./templates.js";
 import { getCompanySettings } from "./settings.js";
-import { escapeHtml, toast, uid, getParam, findClosestCatalogMatch } from "./utils.js";
+import { escapeHtml, toast, uid, getParam, findClosestCatalogMatch, normalizeQuantity } from "./utils.js";
 
 await loadLang();
 
@@ -85,7 +85,7 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
       <td><input type="text" class="row-code-input mono" value="${escapeHtml(p.code || "")}" placeholder="${t('code_optional_placeholder')}" style="width:90px;" /></td>
       <td><input type="text" class="row-name-input" value="${escapeHtml(p.name)}" style="min-width:160px;" /></td>
       <td>${escapeHtml(p.unit)}</td>
-      <td><input type="number" min="0.1" step="0.1" value="1" class="qty-input" style="width:80px;" /></td>
+      <td><input type="number" min="1" step="1" value="1" class="qty-input" style="width:80px;" /></td>
       <td><input type="text" placeholder="${t('note')}" class="note-input" /></td>
       <td><button class="btn btn-sm btn-amber" data-add="${p.id}">+ ${t("add")}</button></td>
     </tr>
@@ -95,7 +95,7 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
     btn.addEventListener("click", () => {
       const row = btn.closest("tr");
       const product = products.find((p) => p.id === btn.dataset.add);
-      const qty = Number(row.querySelector(".qty-input").value) || 1;
+      const qty = normalizeQuantity(row.querySelector(".qty-input").value);
       const note = row.querySelector(".note-input").value.trim();
       const editedCode = row.querySelector(".row-code-input").value.trim();
       const editedName = row.querySelector(".row-name-input").value.trim() || product.name;
@@ -170,7 +170,7 @@ document.getElementById("manual-add-btn").addEventListener("click", () => {
   const name = document.getElementById("manual-name").value.trim();
   if (!name) { toast(t("toast_enter_item_name"), "error"); return; }
   const code = document.getElementById("manual-code").value.trim();
-  const qty = Number(document.getElementById("manual-qty").value) || 1;
+  const qty = normalizeQuantity(document.getElementById("manual-qty").value);
   const unit = document.getElementById("manual-unit").value.trim() || "kom";
   const note = document.getElementById("manual-note").value.trim();
   const categoryId = document.getElementById("manual-category").value;
@@ -340,7 +340,7 @@ function renderCart() {
             ${item.manualEntry ? ` <span class="badge badge-gray">${t("manual_entry_badge")}</span>` : ""}
             <div class="muted" style="font-size:12px;">${escapeHtml(item.pickupLocationName)}</div>
           </div>
-          <input type="number" min="0.1" step="0.1" value="${item.quantity}" class="cart-qty" />
+          <input type="number" min="1" step="1" value="${item.quantity}" class="cart-qty" />
           <span class="muted">${escapeHtml(item.unit)}</span>
           <input type="text" value="${escapeHtml(item.note)}" placeholder="${t('note')}" class="cart-note" />
           ${needsManualDeliveryPick
@@ -366,11 +366,16 @@ function renderCart() {
       });
     }
     row.querySelector(".cart-qty").addEventListener("input", (e) => {
-      // Količina ne sme ostati prazna/0 — ako je uneta vrednost nevalidna, zadrži poslednju važeću.
+      // Količina ne sme ostati prazna/0/decimalna — dok korisnik kuca, prihvati samo
+      // pozitivne cele brojeve; nevalidan unos (prazno, 0, minus, decimala) zadrži
+      // poslednju važeću vrednost do blur-a, kad se polje svakako vraća na item.quantity.
       const val = Number(e.target.value);
-      if (val > 0) { item.quantity = val; }
+      if (Number.isInteger(val) && val >= 1) { item.quantity = val; }
     });
-    row.querySelector(".cart-qty").addEventListener("blur", (e) => { e.target.value = item.quantity; });
+    row.querySelector(".cart-qty").addEventListener("blur", (e) => {
+      item.quantity = normalizeQuantity(e.target.value, item.quantity);
+      e.target.value = item.quantity;
+    });
     row.querySelector(".cart-note").addEventListener("input", (e) => { item.note = e.target.value; });
     // Šifra i naziv se mogu ispraviti i ovde (npr. kad se šifra slučajno slepi sa
     // nazivom pri slobodnom unosu) — na blur se ispravka upisuje i u katalog
