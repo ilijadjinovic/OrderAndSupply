@@ -8,7 +8,7 @@ import { createOrder, assignOrder } from "./orders.js";
 import { getIsporucioci } from "./users.js";
 import { getTemplates, saveTemplate } from "./templates.js";
 import { getCompanySettings } from "./settings.js";
-import { escapeHtml, toast, uid, getParam, findClosestCatalogMatch, normalizeQuantity } from "./utils.js";
+import { escapeHtml, toast, uid, getParam, findClosestCatalogMatch, normalizeQuantity, normalizeName } from "./utils.js";
 
 await loadLang();
 
@@ -77,6 +77,7 @@ document.getElementById("supplier-select").addEventListener("change", async (e) 
   const [locs, products] = await Promise.all([getSupplierLocations(companyId, supplierId), getProducts(companyId, supplierId)]);
   pickupSelect.innerHTML += locs.map((l) => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
   currentSupplierCatalog = products;
+  acClose(); // katalog za predloge se promenio (drugi dobavljač) — stara lista predloga više ne važi
 
   if (!products.length) { productList.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_products_in_catalog")}</td></tr>`; return; }
   const supplier = suppliers.find((s) => s.id === supplierId);
@@ -152,6 +153,7 @@ document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
     btn.classList.add("active");
     document.getElementById("catalog-entry").classList.toggle("hidden", btn.dataset.mode !== "catalog");
     document.getElementById("manual-entry").classList.toggle("hidden", btn.dataset.mode !== "manual");
+    acClose(); // zatvori listu predloga ako je otvorena dok se prelazi na drugi tab
   });
 });
 
@@ -164,6 +166,7 @@ document.querySelectorAll("#entry-mode-tabs .tab-btn").forEach((btn) => {
 //   želi da doda kao novu stavku u katalog.
 // - Ako nema poklapanja -> stavka se dodaje u narudžbenicu I automatski upisuje u katalog.
 document.getElementById("manual-add-btn").addEventListener("click", () => {
+  acClose();
   const supplierId = document.getElementById("supplier-select").value;
   if (!supplierId) { toast(t("toast_select_supplier_first"), "error"); return; }
 
@@ -186,8 +189,120 @@ function resetManualEntryForm() {
   document.getElementById("manual-code").value = "";
   document.getElementById("manual-qty").value = "1";
   document.getElementById("manual-note").value = "";
+  acClose();
   document.getElementById("manual-name").focus();
 }
+
+// --- Autocomplete za polje "Naziv artikla" pri slobodnom unosu — dok korisnik
+// kuca, ispod polja iskrsava lista sličnih naziva iz kataloga IZABRANOG dobavljača
+// (kao predlozi adrese u browseru). Strelice gore/dole pomeraju fokus kroz listu,
+// Enter potvrđuje istaknuti predlog (i popunjava i šifru/JM/kategoriju iz kataloga),
+// Escape ili klik van liste je zatvara. Predlog se ne nudi za tekst koji je već
+// tačno identičan nazivu iz kataloga (nema smisla nuditi ono što je već otkucano). ---
+const manualNameInput = document.getElementById("manual-name");
+let acPopover = null;
+let acMatches = [];
+let acActiveIndex = -1;
+let acOutsideHandler = null;
+
+function acClose() {
+  if (acPopover) { acPopover.remove(); acPopover = null; }
+  acMatches = [];
+  acActiveIndex = -1;
+  if (acOutsideHandler) { document.removeEventListener("mousedown", acOutsideHandler, true); acOutsideHandler = null; }
+}
+
+function acFindMatches(term) {
+  const q = normalizeName(term);
+  if (!q) return [];
+  const starts = [], contains = [];
+  for (const p of currentSupplierCatalog) {
+    const n = normalizeName(p.name);
+    if (n === q) continue; // identično onome što je već otkucano — nema šta da se predloži
+    if (n.startsWith(q)) starts.push(p);
+    else if (n.includes(q)) contains.push(p);
+  }
+  return [...starts, ...contains].slice(0, 8);
+}
+
+function acRenderActive() {
+  if (!acPopover) return;
+  acPopover.querySelectorAll(".ac-item").forEach((el, i) => el.classList.toggle("active", i === acActiveIndex));
+  const activeEl = acPopover.querySelector(".ac-item.active");
+  if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
+}
+
+function acSelect(product) {
+  document.getElementById("manual-name").value = product.name;
+  document.getElementById("manual-code").value = product.code || "";
+  document.getElementById("manual-unit").value = product.unit || "kom";
+  if (product.categoryId) document.getElementById("manual-category").value = product.categoryId;
+  acClose();
+  const qtyInput = document.getElementById("manual-qty");
+  qtyInput.focus();
+  qtyInput.select();
+}
+
+function acOpen(matches) {
+  acClose();
+  if (!matches.length) return;
+  acMatches = matches;
+  acActiveIndex = -1;
+
+  acPopover = document.createElement("div");
+  acPopover.className = "ac-popover";
+  acPopover.innerHTML = matches.map((p, i) => `
+    <button type="button" class="ac-item" data-index="${i}">
+      <span class="ac-item-name">${escapeHtml(p.name)}</span>
+      ${p.code ? `<span class="ac-item-code mono">${escapeHtml(p.code)}</span>` : ""}
+    </button>
+  `).join("");
+  document.body.appendChild(acPopover);
+
+  const rect = manualNameInput.getBoundingClientRect();
+  acPopover.style.top = `${window.scrollY + rect.bottom + 4}px`;
+  acPopover.style.left = `${window.scrollX + rect.left}px`;
+  acPopover.style.width = `${rect.width}px`;
+
+  acPopover.querySelectorAll(".ac-item").forEach((el) => {
+    // mousedown (ne click) da se izvrši PRE nego što blur na inputu stigne da zatvori listu
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      acSelect(matches[Number(el.dataset.index)]);
+    });
+    el.addEventListener("mouseenter", () => { acActiveIndex = Number(el.dataset.index); acRenderActive(); });
+  });
+
+  acOutsideHandler = (e) => {
+    if (!acPopover.contains(e.target) && e.target !== manualNameInput) acClose();
+  };
+  document.addEventListener("mousedown", acOutsideHandler, true);
+}
+
+manualNameInput.addEventListener("input", () => acOpen(acFindMatches(manualNameInput.value)));
+
+manualNameInput.addEventListener("keydown", (e) => {
+  if (!acPopover || !acMatches.length) return;
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    acActiveIndex = (acActiveIndex + 1) % acMatches.length;
+    acRenderActive();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    acActiveIndex = acActiveIndex <= 0 ? acMatches.length - 1 : acActiveIndex - 1;
+    acRenderActive();
+  } else if (e.key === "Enter") {
+    if (acActiveIndex >= 0) { e.preventDefault(); acSelect(acMatches[acActiveIndex]); }
+    else { acClose(); }
+  } else if (e.key === "Escape") {
+    acClose();
+  }
+});
+
+manualNameInput.addEventListener("blur", () => {
+  // Odloženo za jedan tik da mousedown na stavci liste stigne da se obradi pre zatvaranja.
+  setTimeout(() => { if (document.activeElement !== manualNameInput) acClose(); }, 0);
+});
 
 function addManualItemToCartAndOptionallyCatalog({ supplierId, name, qty, unit, note, productId = "", code = "", categoryId = "", createInCatalog = false }) {
   const supplier = suppliers.find((s) => s.id === supplierId);
