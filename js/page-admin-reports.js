@@ -68,6 +68,7 @@ function applyFiltersAndRender() {
     isporucilacUid: document.getElementById("f-isporucilac").value,
     supplierId: document.getElementById("f-supplier").value,
     status: document.getElementById("f-status").value,
+    requestedBy: document.getElementById("f-requested-by").value,
   });
   document.getElementById("report-meta").textContent = t("report_meta_count", { count: filteredRows.length });
   renderOrdersTab();
@@ -80,12 +81,13 @@ function applyFiltersAndRender() {
 // --------------------------------------------------------------- PO NARUDŽBENICAMA
 function renderOrdersTab() {
   const body = document.getElementById("orders-body");
-  if (!filteredRows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="7">${t("no_orders_for_filters")}</td></tr>`; return; }
+  if (!filteredRows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="8">${t("no_orders_for_filters")}</td></tr>`; return; }
   body.innerHTML = filteredRows.map((r) => `
     <tr>
       <td class="mono"><a href="./order-detail.html?order=${r.id}">${escapeHtml(r.orderNumber)}</a></td>
       <td>${formatDate(r.createdAt)}</td>
       <td>${escapeHtml(r.createdByName || "—")}</td>
+      <td>${escapeHtml(r.requestedByName || "—")}</td>
       <td>${escapeHtml(r.assignedToName || "—")}</td>
       <td><span class="badge ${badgeClassForStatus(r.status)}">${escapeHtml(statusLabel(r.status))}</span></td>
       <td>${r.itemCount ?? (r.items || []).length}</td>
@@ -142,6 +144,7 @@ function rowsForExport(view) {
       [t("export_col_order_number")]: r.orderNumber,
       [t("export_col_date")]: formatDate(r.createdAt),
       [t("role_narucilac")]: r.createdByName || "—",
+      [t("requested_by_meta_label")]: r.requestedByName || "—",
       [t("role_isporucilac")]: r.assignedToName || "—",
       [t("status")]: statusLabel(r.status),
       [t("export_col_item_count")]: r.itemCount ?? (r.items || []).length,
@@ -206,10 +209,12 @@ document.getElementById("reset-filters-btn").addEventListener("click", () => {
   document.getElementById("f-isporucilac").value = "";
   document.getElementById("f-supplier").value = "";
   document.getElementById("f-status").value = "";
+  document.getElementById("f-requested-by").value = "";
   runReport();
 });
-// Filteri koji ne zahtevaju ponovno učitavanje iz baze (narucilac/isporucilac/dobavljac/status)
+// Filteri koji ne zahtevaju ponovno učitavanje iz baze (narucilac/isporucilac/dobavljac/status/ko-je-trazio)
 // primenjuju se odmah nad već učitanim setom narudžbina za izabrani period.
 ["f-narucilac", "f-isporucilac", "f-supplier", "f-status"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyFiltersAndRender);
 });
+document.getElementById("f-requested-by").addEventListener("input", applyFiltersAndRender);

@@ -4,7 +4,7 @@ import { loadLang, t } from "./i18n.js";
 import { getSuppliers, getSupplierLocations } from "./suppliers.js";
 import { getProducts, addProduct, updateProduct, getCategories } from "./catalog.js";
 import { getLocations } from "./locations.js";
-import { createOrder, assignOrder } from "./orders.js";
+import { createOrder, assignOrder, getRecentRequesterNames } from "./orders.js";
 import { getIsporucioci } from "./users.js";
 import { getTemplates, saveTemplate } from "./templates.js";
 import { getCompanySettings } from "./settings.js";
@@ -42,6 +42,12 @@ requireAuth(["narucilac"], async (user, profile) => {
 
   const templates = await getTemplates(companyId);
   document.getElementById("template-select").innerHTML += templates.map((tp) => `<option value="${tp.id}">${escapeHtml(tp.name)} (${tp.type})</option>`).join("");
+
+  // Autocomplete za "ko je tražio" — imena iz ranijih narudžbina ove firme, da se
+  // izbegnu tipfeleri/varijacije istog imena (Marko / M. Petrović...).
+  getRecentRequesterNames(companyId).then((names) => {
+    document.getElementById("requested-by-list").innerHTML = names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("");
+  }).catch(() => {});
 
   document.getElementById("priority-step-title").textContent = `4. ${t("priority")}`;
   document.getElementById("save-step-title").textContent = `5. ${t("save_as_optional_title")}`;
@@ -556,13 +562,14 @@ document.getElementById("submit-order").addEventListener("click", async () => {
   }
 
   const priority = document.querySelector('input[name="priority"]:checked').value;
+  const requestedByName = document.getElementById("requested-by").value.trim();
   const btn = document.getElementById("submit-order");
   btn.disabled = true;
 
   try {
     const items = cart.map(({ tempId, ...rest }) => rest);
     const orderId = await createOrder(companyId, {
-      createdByUid: uidValue, createdByName: actorName, priority, items,
+      createdByUid: uidValue, createdByName: actorName, priority, requestedByName, items,
       deliveryLocations: chosenDeliveryLocations, assignmentMode,
     });
 

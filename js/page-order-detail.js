@@ -4,7 +4,7 @@ import { loadLang, t, currentLang } from "./i18n.js";
 import {
   listenOrder, listenOrderItems, listenOrderPurchases, listenDeliveryLocations,
   acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, deleteOrder, assignOrder,
-  updateOrderItem, addOrderItem, updateOrderPriority, addOrderDeliveryLocation, removeOrderDeliveryLocation,
+  updateOrderItem, addOrderItem, updateOrderPriority, updateOrderRequestedBy, addOrderDeliveryLocation, removeOrderDeliveryLocation,
 } from "./orders.js";
 import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
 import { getSupplierLocations } from "./suppliers.js";
@@ -110,9 +110,18 @@ function renderHeader() {
       </select>`
     : (order.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`);
 
+  // "Ko je tražio" — inline izmena dok se narudžbina još sme menjati (isti uslov
+  // kao za prioritet); kad se ne sme menjati, red se uopšte ne prikazuje ako je prazan.
+  const requestedByHtml = editable
+    ? `<span style="display:inline-flex;align-items:center;gap:6px;">${t("requested_by_meta_label")}:
+        <input type="text" id="requested-by-edit-input" class="mono" style="width:auto;min-width:160px;padding:4px 8px;font-size:13px;"
+          maxlength="80" value="${escapeHtml(order.requestedByName || "")}" data-i18n-placeholder="requested_by_placeholder" placeholder="${t("requested_by_placeholder")}" /></span>`
+    : (order.requestedByName ? `${t("requested_by_meta_label")}: <strong>${escapeHtml(order.requestedByName)}</strong>` : "");
+
   document.getElementById("order-meta").innerHTML = `
     ${t("role_narucilac")}: <strong>${escapeHtml(order.createdByName || "—")}</strong> ·
-    ${t("role_isporucilac")}: <strong>${escapeHtml(order.assignedToName || t("not_assigned"))}</strong> ·
+    ${t("role_isporucilac")}: <strong>${escapeHtml(order.assignedToName || t("not_assigned"))}</strong>
+    ${requestedByHtml ? ` · ${requestedByHtml}` : ""} ·
     ${priorityHtml}
     <span class="badge ${badgeClassForStatus(order.status)}">${statusLabel(order.status)}</span> ·
     ${t("created_label")} ${formatDate(order.createdAt)}
@@ -123,6 +132,12 @@ function renderHeader() {
   document.getElementById("priority-edit-select")?.addEventListener("change", async (e) => {
     await updateOrderPriority(companyId, orderId, e.target.value, { actorUid: uidValue, actorName: profile.name });
     toast(t("toast_priority_updated"), "success");
+  });
+
+  document.getElementById("requested-by-edit-input")?.addEventListener("change", async (e) => {
+    await updateOrderRequestedBy(companyId, orderId, e.target.value, { actorUid: uidValue, actorName: profile.name });
+    order.requestedByName = e.target.value.trim();
+    toast(t("toast_requested_by_updated"), "success");
   });
 }
 

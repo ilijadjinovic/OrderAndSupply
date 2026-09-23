@@ -30,6 +30,9 @@
       <div class="form-row" style="align-items:end;">
         <div class="field"><label data-i18n="supplier">Dobavljač</label><select id="f-supplier"><option value="" data-i18n="all_suppliers">Svi dobavljači</option></select></div>
         <div class="field"><label data-i18n="order_status_label">Status narudžbine</label><select id="f-status"><option value="" data-i18n="all_statuses">Svi statusi</option></select></div>
+      </div>
+      <div class="form-row" style="align-items:end;">
+        <div class="field"><label data-i18n="requested_by_meta_label">Ko je tražio</label><input type="text" id="f-requested-by" data-i18n-placeholder="requested_by_filter_placeholder" placeholder="pretraga po imenu..." /></div>
         <div class="field" style="display:flex;align-items:end;"><button class="btn btn-primary" id="run-report-btn" style="height:42px;width:100%;" data-i18n="apply_filters_btn">🔍 Primeni filtere</button></div>
         <div class="field" style="display:flex;align-items:end;"><button class="btn btn-outline" id="reset-filters-btn" style="height:42px;width:100%;" data-i18n="reset_filters_btn">Poništi filtere</button></div>
       </div>
@@ -58,8 +61,8 @@
         </div>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th data-i18n="export_col_number">Broj</th><th data-i18n="export_col_date">Datum</th><th data-i18n="role_narucilac">Naručilac</th><th data-i18n="role_isporucilac">Isporučilac</th><th data-i18n="status">Status</th><th data-i18n="export_col_item_count">Broj artikala</th><th data-i18n="export_col_total_amount">Ukupan iznos</th></tr></thead>
-            <tbody id="orders-body"><tr class="empty-row"><td colspan="7" data-i18n="set_filters_hint">Podesite filtere i kliknite "Primeni filtere".</td></tr></tbody>
+            <thead><tr><th data-i18n="export_col_number">Broj</th><th data-i18n="export_col_date">Datum</th><th data-i18n="role_narucilac">Naručilac</th><th data-i18n="requested_by_meta_label">Ko je tražio</th><th data-i18n="role_isporucilac">Isporučilac</th><th data-i18n="status">Status</th><th data-i18n="export_col_item_count">Broj artikala</th><th data-i18n="export_col_total_amount">Ukupan iznos</th></tr></thead>
+            <tbody id="orders-body"><tr class="empty-row"><td colspan="8" data-i18n="set_filters_hint">Podesite filtere i kliknite "Primeni filtere".</td></tr></tbody>
           </table>
         </div>
       </div>

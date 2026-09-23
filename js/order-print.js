@@ -190,6 +190,16 @@ function drawOrderMeta(pdf, order, deliveryLocations, y) {
   pdf.text(order.assignedToName || "—", M + 122, y);
   y += 6;
 
+  if (order.requestedByName) {
+    pdf.setFont(REPORT_FONT, "normal");
+    pdf.setTextColor(85);
+    pdf.text(`${t("requested_by_meta_label")}:`, M, y);
+    pdf.setFont(REPORT_FONT, "bold");
+    pdf.setTextColor(30);
+    pdf.text(order.requestedByName, M + 26, y);
+    y += 6;
+  }
+
   pdf.setFont(REPORT_FONT, "normal");
   pdf.setTextColor(85);
   pdf.text(`${t("delivery_locations_title")}:`, M, y);

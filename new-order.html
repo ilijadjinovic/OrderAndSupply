@@ -22,6 +22,16 @@
     </div>
 
     <div class="panel">
+      <div class="panel-head"><h2 data-i18n="requested_by_title">Ko je tražio ovu robu?</h2></div>
+      <p class="hint" data-i18n="requested_by_hint">Opciono — upišite ime osobe (npr. inženjera) koja vam je tražila ovu robu, da biste kasnije lako videli ko je inicirao narudžbinu.</p>
+      <div class="field" style="max-width:320px;">
+        <label data-i18n="requested_by_label">Ime i prezime (opciono)</label>
+        <input type="text" id="requested-by" list="requested-by-list" maxlength="80" data-i18n-placeholder="requested_by_placeholder" placeholder="npr. Marko Marković" />
+        <datalist id="requested-by-list"></datalist>
+      </div>
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><h2 data-i18n="step1_title">1. Izaberi dobavljača i dodaj artikle</h2></div>
       <div class="form-row">
         <div class="field">

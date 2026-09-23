@@ -41,12 +41,14 @@ export async function buildReportDataset(companyId, { dateFrom = null, dateTo = 
 }
 
 // --- Klijentski filteri (primenjuju se na već učitani dataset) ---
-export function applyReportFilters(rows, { narucilacUid = "", isporucilacUid = "", supplierId = "", status = "" } = {}) {
+export function applyReportFilters(rows, { narucilacUid = "", isporucilacUid = "", supplierId = "", status = "", requestedBy = "" } = {}) {
+  const needle = requestedBy.trim().toLocaleLowerCase("sr");
   return rows.filter((r) => {
     if (narucilacUid && r.createdByUid !== narucilacUid) return false;
     if (isporucilacUid && r.assignedToUid !== isporucilacUid) return false;
     if (status && r.status !== status) return false;
     if (supplierId && !(r.supplierIds || []).includes(supplierId)) return false;
+    if (needle && !(r.requestedByName || "").toLocaleLowerCase("sr").includes(needle)) return false;
     return true;
   });
 }

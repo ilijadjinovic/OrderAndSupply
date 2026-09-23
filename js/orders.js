@@ -74,8 +74,12 @@ async function getNextOrderNumber(companyId) {
 
 // items: [{supplierId, supplierName, productId, productName, code, unit, quantity, note, priority, pickupLocationId}]
 // deliveryLocations: [{locationId, locationName, itemProductIds:[...]}]
+// requestedByName: slobodan tekst — ko je (koja osoba/inženjer) tražio robu iz ove
+// narudžbine. Odvojeno od createdByName, koji je uvek naručilac što je uneo
+// narudžbinu u sistem — vidi napomenu "za koga je narudžbina" (Poglavlje 2.1).
 export async function createOrder(companyId, {
   createdByUid, createdByName, priority, items, deliveryLocations, assignmentMode, recurring = null,
+  requestedByName = "",
 }) {
   const orderNumber = await getNextOrderNumber(companyId);
 
@@ -94,6 +98,7 @@ export async function createOrder(companyId, {
 
   const orderRef = await addDoc(ordersCol(companyId), {
     orderNumber, createdByUid, createdByName, priority,
+    requestedByName: (requestedByName || "").trim(),
     status,
     assignedToUid, assignedToName,
     supplierIds: [...new Set(items.map((i) => i.supplierId))],
@@ -300,6 +305,26 @@ export async function updateOrderPriority(companyId, orderId, priority, { actorU
   await logAudit(companyId, { action: "order_priority_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: priority });
 }
 
+// --- "Ko je tražio" — narucilac može promeniti dok nije prihvaćena ---
+export async function updateOrderRequestedBy(companyId, orderId, requestedByName, { actorUid, actorName } = {}) {
+  const value = (requestedByName || "").trim();
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { requestedByName: value, updatedAt: serverTimestamp() });
+  await logAudit(companyId, { action: "order_requested_by_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: value || "—" });
+}
+
+// Poslednjih N različitih imena unetih u polje "ko je tražio" — koristi se za
+// autocomplete (datalist) pri kreiranju nove narudžbine, da se izbegnu tipfeleri
+// i različiti zapisi istog imena (npr. "Marko" vs "M. Petrović").
+export async function getRecentRequesterNames(companyId, max = 300) {
+  const snap = await getDocs(query(ordersCol(companyId), orderBy("createdAt", "desc"), limit(max)));
+  const names = new Set();
+  snap.docs.forEach((d) => {
+    const name = (d.data().requestedByName || "").trim();
+    if (name) names.add(name);
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b, "sr"));
+}
+
 // --- Lokacije isporuke narudžbine — dodavanje/uklanjanje dok nije prihvaćena ---
 export async function addOrderDeliveryLocation(companyId, orderId, { locationId, locationName }) {
   const ref = await addDoc(deliveryLocCol(companyId, orderId), { locationId, locationName, status: "ceka", createdAt: serverTimestamp() });
@@ -321,6 +346,7 @@ export async function confirmReceipt(companyId, orderId, { actorUid, actorName, 
     const deliveryLocations = await getOrderDeliveryLocations(companyId, orderId);
     return createOrder(companyId, {
       createdByUid: order.createdByUid, createdByName: order.createdByName, priority: "standardno",
+      requestedByName: order.requestedByName || "",
       items: missingItemsToCarryOver, deliveryLocations: deliveryLocations.map((l) => ({ locationId: l.id, locationName: l.locationName })),
       assignmentMode: "admin_bira",
     });
