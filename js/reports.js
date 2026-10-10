@@ -3,40 +3,56 @@
 // Izveštaji: po narudžbenicama, po naručiocima, po isporučiocima,
 // po dobavljačima, finansijski pregled.
 // ============================================================================
-import { db, collection, getDocs, orderBy, query, limit } from "./firebase-init.js";
+import { db, collection, getDocs, orderBy, query, limit, where, startAfter, Timestamp } from "./firebase-init.js";
 import { getOrderItems, getOrderPurchases } from "./orders.js";
 import { t } from "./i18n.js";
 
-export async function getAllOrdersOnce(companyId, max = 500) {
-  const q = query(collection(db, "companies", companyId, "orders"), orderBy("createdAt", "desc"), limit(max));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+// Narudžbine firme po stranama od po 500, opciono ograničene periodom kreiranja
+// (filtriranje radi baza, ne browser). Ranije se učitavalo samo poslednjih 500 i
+// tek onda filtriralo po periodu, pa su izveštaji za starije periode bili
+// nepotpuni. max = gornja granica radi zaštite (5000).
+export async function getOrdersInRange(companyId, { dateFrom = null, dateTo = null, max = 5000 } = {}) {
+  const ordersRef = collection(db, "companies", companyId, "orders");
+  const filters = [];
+  if (dateFrom) filters.push(where("createdAt", ">=", Timestamp.fromDate(dateFrom)));
+  if (dateTo) filters.push(where("createdAt", "<=", Timestamp.fromDate(dateTo)));
+  const out = [];
+  let cursor = null;
+  while (out.length < max) {
+    const parts = [...filters, orderBy("createdAt", "desc")];
+    if (cursor) parts.push(startAfter(cursor));
+    parts.push(limit(Math.min(500, max - out.length)));
+    const snap = await getDocs(query(ordersRef, ...parts));
+    out.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    if (snap.docs.length < 500) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  return out;
+}
+
+export async function getAllOrdersOnce(companyId, max = 5000) {
+  return getOrdersInRange(companyId, { max });
 }
 
 // Učitava narudžbine (opciono filtrirane po periodu kreiranja) zajedno sa
 // njihovim stavkama i nabavkama (potrebno za finansijske i detaljne izveštaje).
 // dateFrom / dateTo: JS Date objekti (opciono).
-export async function buildReportDataset(companyId, { dateFrom = null, dateTo = null, max = 500 } = {}) {
-  const orders = await getAllOrdersOnce(companyId, max);
+export async function buildReportDataset(companyId, { dateFrom = null, dateTo = null, max = 5000 } = {}) {
+  const filtered = await getOrdersInRange(companyId, { dateFrom, dateTo, max });
 
-  const filtered = orders.filter((o) => {
-    if (!dateFrom && !dateTo) return true;
-    const d = o.createdAt?.toDate ? o.createdAt.toDate() : null;
-    if (!d) return true; // narudžbina bez upisanog vremena (retko) — ne isključuj
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo && d > dateTo) return false;
-    return true;
-  });
-
-  const rows = await Promise.all(filtered.map(async (o) => {
-    const [items, purchases] = await Promise.all([
-      getOrderItems(companyId, o.id).catch(() => []),
-      getOrderPurchases(companyId, o.id).catch(() => []),
-    ]);
-    const total = purchases.reduce((s, p) => s + (Number(p.paidAmount) || 0), 0);
-    return { ...o, items, purchases, total };
-  }));
-
+  // Stavke i nabavke se čitaju u grupama (da se ne pokrene hiljade upita odjednom)
+  const rows = [];
+  for (let i = 0; i < filtered.length; i += 25) {
+    const chunk = filtered.slice(i, i + 25);
+    rows.push(...await Promise.all(chunk.map(async (o) => {
+      const [items, purchases] = await Promise.all([
+        getOrderItems(companyId, o.id).catch(() => []),
+        getOrderPurchases(companyId, o.id).catch(() => []),
+      ]);
+      const total = purchases.reduce((s, p) => s + (Number(p.paidAmount) || 0), 0);
+      return { ...o, items, purchases, total };
+    })));
+  }
   return rows;
 }
 

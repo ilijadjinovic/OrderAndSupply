@@ -216,7 +216,7 @@ main.content { grid-area: main; padding: 28px 32px; overflow-y: auto; min-width:
 /* ── FORMS ─────────────────────────────────────────────────────────────── */
 label { display: block; font-size: 12.5px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 6px; }
 .field { margin-bottom: 16px; }
-input[type="text"], input[type="email"], input[type="password"], input[type="number"],
+input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="search"],
 input[type="date"], input[type="tel"], input[type="file"], select, textarea {
   width: 100%; padding: 10px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
   background: var(--color-bg); color: var(--color-text); outline: none; transition: border-color 0.15s, box-shadow 0.15s;
@@ -239,11 +239,13 @@ select option { background: var(--color-surface-2); color: var(--color-text); }
 /* ── DATE PICKER (kalendar na klik, prikaz dd.mm.gggg.) ───────────────────── */
 input.date-input {
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237a8fb5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+  /* Ikona kalendara u zaobljenoj plavoj pločici — jasno se vidi da polje otvara kalendar */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='7' fill='%233d7eff' fill-opacity='0.25'/%3E%3Cg transform='translate(5 5)' fill='none' stroke='%23a9c6ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.5' y='3' width='15' height='13.5' rx='2'/%3E%3Cline x1='12.5' y1='1' x2='12.5' y2='5'/%3E%3Cline x1='5.5' y1='1' x2='5.5' y2='5'/%3E%3Cline x1='1.5' y1='8' x2='16.5' y2='8'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 12px center;
-  padding-right: 38px;
+  background-position: right 6px center;
+  padding-right: 44px;
 }
+input.date-input:hover { border-color: var(--color-primary); }
 .dp-popover {
   position: absolute;
   z-index: 1000;
@@ -542,3 +544,76 @@ table.data-table.table-fixed th { white-space: normal; }
    izabrani proizvodi u tabeli kataloga (admin-catalog.html). */
 .bulk-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 16px; background: var(--color-primary-soft, #fff4de); }
 .bulk-edit-bar #bulk-edit-count { font-weight: 600; }
+
+/* ── KONTROLNE TABLE: kartice sa podsetnikom, pretraga, akcije u redu, paginacija ── */
+/* Šest kartica se ravnomerno raspoređuju (2 u redu na telefonu, više na širem ekranu) */
+.stat-grid.stat-grid-auto { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+
+/* Vizuelni podsetnik: kartice koje traže reakciju (čeka prihvatanje / potvrdu, reklamacije)
+   dobijaju obojenu ivicu, znak "!" i blago pulsiranje dok je broj veći od nule. */
+.stat-card.attention { border-color: var(--color-warning); animation: attn-pulse 2s ease-in-out infinite; }
+.stat-card.attention.red { border-color: var(--color-danger); animation-name: attn-pulse-red; }
+.stat-card.attention::after {
+  content: "!"; position: absolute; top: 10px; right: 12px; width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
+  background: var(--color-warning); color: #111;
+}
+.stat-card.attention.red::after { background: var(--color-danger); color: #fff; }
+@keyframes attn-pulse     { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); } 50% { box-shadow: 0 0 0 5px rgba(245,158,11,.28); } }
+@keyframes attn-pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }  50% { box-shadow: 0 0 0 5px rgba(239,68,68,.30); } }
+@media (prefers-reduced-motion: reduce) { .stat-card.attention { animation: none; } }
+
+.late-tag {
+  display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700;
+  background: var(--color-danger-soft); color: var(--color-danger); white-space: nowrap;
+}
+.reject-reason { display: block; margin-top: 4px; font-size: 11.5px; color: var(--color-danger); white-space: normal; max-width: 260px; }
+.data-table tr.row-rejected td { background: var(--color-danger-bg-faint); }
+.data-table tr.row-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+/* Blok "Zahteva pažnju": narudžbine na vrhu iz razloga (ne po datumu) — žuta ivica sa leve strane,
+   blaga pozadina i debela linija ispod poslednje, da se ne utope među ostalima */
+.data-table tr.row-attention td { background: rgba(245, 158, 11, .08); }
+.data-table tr.row-attention td:first-child { box-shadow: inset 4px 0 0 var(--color-warning); }
+.data-table tr.row-attention-last td { border-bottom: 3px solid var(--color-warning); }
+.data-table tr.group-row td { padding: 9px 14px 5px; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--color-text-muted); background: transparent; border-bottom: none; text-align: left; }
+.data-table tr.group-row.attn td { color: var(--color-warning); }
+.group-label { position: sticky; left: 14px; }
+.row-actions { display: flex; gap: 6px; align-items: center; }
+.repeated-link { font-size: 12px; color: var(--color-primary); text-decoration: underline; }
+
+.dash-search { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.dash-search input[type="search"] { width: 100%; }
+.dash-search-bar { display: flex; gap: 10px; align-items: stretch; }
+.dash-search-bar input[type="search"] { flex: 1 1 auto; min-width: 0; width: auto; }
+.filters-toggle { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; flex: 0 0 auto; }
+.filters-toggle[aria-expanded="true"] { border-color: var(--color-primary); }
+.ft-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--color-primary); color: #fff; font-size: 11px; font-weight: 800; }
+.ft-count[hidden] { display: none; }
+.ft-caret { font-size: 11px; transition: transform .2s; }
+.filters-toggle[aria-expanded="true"] .ft-caret { transform: rotate(180deg); }
+.filters-panel { display: flex; flex-direction: column; gap: 10px; }
+.filters-panel[hidden] { display: none; }
+.chip-group { display: flex; flex-direction: column; gap: 8px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Dugmići-filteri (status, prioritet): klik uključuje/isključuje, primena je automatska */
+.fchip {
+  padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); transition: all .15s;
+}
+.fchip:hover { color: var(--color-text); border-color: var(--color-border-light); background: var(--color-surface-2); }
+.fchip.active, .fchip[aria-pressed="true"] { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.fchip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.dash-dates { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.dash-date { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 11px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.dash-date input { width: 170px; }
+.period-presets { align-items: center; padding-bottom: 6px; }
+.dash-search-info { font-size: 12.5px; min-height: 18px; margin-bottom: 8px; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; padding-top: 14px; }
+.pager-count { font-size: 12.5px; }
+
+/* Telefon: veća površina dodira za dugmad u redu (Prihvati / Odbij / Potvrdi), pretraga preko cele širine */
+@media (max-width: 700px) {
+  .row-actions .btn { min-height: 38px; padding: 8px 14px; }
+  .dash-date { flex: 1 1 calc(50% - 5px); }
+  .dash-date input { width: 100%; }
+}

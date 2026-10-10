@@ -4,9 +4,10 @@
 import {
   db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot,
   orderBy, where, query, limit, serverTimestamp, writeBatch, increment,
-  runTransaction, storage, ref, deleteObject,
+  runTransaction, storage, ref, deleteObject, startAfter, Timestamp, getCountFromServer, getAggregateFromServer, average,
 } from "./firebase-init.js";
-import { ORDER_STATUS, statusLabel, uid } from "./utils.js";
+import { ORDER_STATUS, DELIVERY_LOCATION_STATUS, statusLabel, uid } from "./utils.js";
+import { OPEN_STATUSES, SEARCH_CAP, buildSearchFields, toMillis } from "./dash-logic.js";
 import { logAudit } from "./audit.js";
 import { createNotification, NOTIF_EVENTS } from "./notifications.js";
 import { getIsporucioci } from "./users.js";
@@ -80,6 +81,9 @@ async function getNextOrderNumber(companyId) {
 export async function createOrder(companyId, {
   createdByUid, createdByName, priority, items, deliveryLocations, assignmentMode, recurring = null,
   requestedByName = "",
+  // assignTo: { uid, name } — direktno dodeli isporučiocu (npr. kod "Ponovi narudžbinu")
+  // extraFields: dodatna polja koja se upisuju na narudžbinu (npr. repeatOfOrderId)
+  assignTo = null, extraFields = {},
 }) {
   const orderNumber = await getNextOrderNumber(companyId);
 
@@ -96,13 +100,29 @@ export async function createOrder(companyId, {
     // (status i dalje CEKA_PRIHVATANJE) i Admin je može ručno dodeliti kasnije.
   }
 
+  if (assignTo?.uid) {
+    assignedToUid = assignTo.uid;
+    assignedToName = assignTo.name || null;
+    status = ORDER_STATUS.CEKA_PRIHVATANJE;
+  }
+
+  const cleanRequestedBy = (requestedByName || "").trim();
+  // Polja za pretragu i prikaz u tabelama (nazivi artikala, dobavljača i lokacija)
+  const searchFields = buildSearchFields(
+    { orderNumber, createdByName, assignedToName, requestedByName: cleanRequestedBy }, items, deliveryLocations,
+  );
+
   const orderRef = await addDoc(ordersCol(companyId), {
     orderNumber, createdByUid, createdByName, priority,
-    requestedByName: (requestedByName || "").trim(),
+    requestedByName: cleanRequestedBy,
     status,
     assignedToUid, assignedToName,
+    // assignedAt: od ovog trenutka se računa kašnjenje (hitno 2h, standardno 24h)
+    assignedAt: assignedToUid ? serverTimestamp() : null,
     supplierIds: [...new Set(items.map((i) => i.supplierId))],
     itemCount: items.length, recurring,
+    ...searchFields,
+    ...extraFields,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
   });
 
@@ -213,8 +233,10 @@ export function listenUnassignedOrders(companyId, callback) {
 // --- Dodela isporučioca — Poglavlje 4.2 ---
 export async function assignOrder(companyId, orderId, { assignedToUid, assignedToName, actorName }) {
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), {
-    assignedToUid, assignedToName, status: ORDER_STATUS.CEKA_PRIHVATANJE, updatedAt: serverTimestamp(),
+    assignedToUid, assignedToName, assignedAt: serverTimestamp(),
+    status: ORDER_STATUS.CEKA_PRIHVATANJE, updatedAt: serverTimestamp(),
   });
+  await safeRefreshSearchData(companyId, orderId);
   await logAudit(companyId, { action: "order_assigned", entity: "Orders", entityId: orderId, actorName, details: assignedToName });
   await createNotification(companyId, { toUid: assignedToUid, event: NOTIF_EVENTS.NOVA_NARUDZBINA, orderId, titleKey: "notif_new_order_title", bodyKey: "notif_new_order_manual_body" });
 }
@@ -269,7 +291,7 @@ export async function acceptOrder(companyId, orderId, { actorUid, actorName, ord
 }
 
 export async function rejectOrder(companyId, orderId, { reason, actorUid, actorName, orderCreatedByUid }) {
-  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ODBIJENA, rejectionReason: reason, updatedAt: serverTimestamp() });
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ODBIJENA, rejectionReason: reason, closedAt: serverTimestamp(), updatedAt: serverTimestamp() });
   await logAudit(companyId, { action: "order_rejected", entity: "Orders", entityId: orderId, actorUid, actorName, details: reason });
   await createNotification(companyId, { toUid: orderCreatedByUid, event: NOTIF_EVENTS.NARUDZBINA_ODBIJENA, orderId, titleKey: "notif_order_rejected_title", bodyKey: "notif_order_rejected_body", bodyParams: { reason } });
 }
@@ -287,15 +309,21 @@ export async function setOrderStatus(companyId, orderId, status, { actorName, ac
 // Ovde se doda i itemCount na narudžbini ažurira pri svakoj izmeni broja
 // stavki, jer se on koristi u izveštajima (Poglavlje "Broj artikala").
 export async function updateOrderItem(companyId, orderId, itemId, data) {
-  return updateDoc(doc(db, "companies", companyId, "orders", orderId, "items", itemId), data);
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId, "items", itemId), data);
+  // nazivi/šifre/dobavljači ulaze u pretragu — ostala polja (količine, nabavka) ne
+  if (Object.keys(data).some((k) => ["productName", "supplierName", "code", "substituteName"].includes(k))) {
+    await safeRefreshSearchData(companyId, orderId);
+  }
 }
 export async function deleteOrderItem(companyId, orderId, itemId) {
   await deleteDoc(doc(db, "companies", companyId, "orders", orderId, "items", itemId));
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { itemCount: increment(-1), updatedAt: serverTimestamp() });
+  await safeRefreshSearchData(companyId, orderId);
 }
 export async function addOrderItem(companyId, orderId, item) {
   const ref = await addDoc(itemsCol(companyId, orderId), { ...item, purchaseStatus: "na_cekanju", purchasedQty: 0, substituteName: "", createdAt: serverTimestamp() });
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { itemCount: increment(1), updatedAt: serverTimestamp() });
+  await safeRefreshSearchData(companyId, orderId);
   return ref.id;
 }
 
@@ -309,6 +337,7 @@ export async function updateOrderPriority(companyId, orderId, priority, { actorU
 export async function updateOrderRequestedBy(companyId, orderId, requestedByName, { actorUid, actorName } = {}) {
   const value = (requestedByName || "").trim();
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), { requestedByName: value, updatedAt: serverTimestamp() });
+  await safeRefreshSearchData(companyId, orderId);
   await logAudit(companyId, { action: "order_requested_by_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: value || "—" });
 }
 
@@ -328,16 +357,25 @@ export async function getRecentRequesterNames(companyId, max = 300) {
 // --- Lokacije isporuke narudžbine — dodavanje/uklanjanje dok nije prihvaćena ---
 export async function addOrderDeliveryLocation(companyId, orderId, { locationId, locationName }) {
   const ref = await addDoc(deliveryLocCol(companyId, orderId), { locationId, locationName, status: "ceka", createdAt: serverTimestamp() });
+  await safeRefreshSearchData(companyId, orderId);
   return ref.id;
 }
 export async function removeOrderDeliveryLocation(companyId, orderId, locId) {
-  return deleteDoc(doc(db, "companies", companyId, "orders", orderId, "deliveryLocations", locId));
+  await deleteDoc(doc(db, "companies", companyId, "orders", orderId, "deliveryLocations", locId));
+  await safeRefreshSearchData(companyId, orderId);
 }
 
 // --- Potvrda prijema + auto-prenos nedostajuće robe u sledeću nabavku (Poglavlje 6) ---
+// Jedan upis: narudžbina odmah ide na "zatvorena" (ranije su bila dva upisa —
+// prvo "potvrdjen_prijem", pa "zatvorena" — i ako drugi padne, narudžbina je
+// ostajala u prelaznom statusu koji nijedna kartica ne prati). Status
+// "potvrdjen_prijem" ostaje u šifrarniku samo zbog starih podataka.
 export async function confirmReceipt(companyId, orderId, { actorUid, actorName, missingItemsToCarryOver = [] }) {
-  await setOrderStatus(companyId, orderId, ORDER_STATUS.POTVRDJEN_PRIJEM, { actorUid, actorName });
-  await updateDoc(doc(db, "companies", companyId, "orders", orderId), { status: ORDER_STATUS.ZATVORENA, confirmedAt: serverTimestamp(), closedAt: serverTimestamp() });
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), {
+    status: ORDER_STATUS.ZATVORENA, confirmedAt: serverTimestamp(), closedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  });
+  await safeRecordProcessingTime(companyId, orderId);
+  await logAudit(companyId, { action: "order_status_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: statusLabel(ORDER_STATUS.POTVRDJEN_PRIJEM) });
   await createNotification(companyId, { toUid: null, event: NOTIF_EVENTS.PRIJEM_POTVRDJEN, orderId, titleKey: "notif_receipt_confirmed_title", bodyKey: "notif_receipt_confirmed_body" });
 
   // Ako postoje nedostajuće stavke i naručilac je izabrao "Da" — kreira se nova narudžbina
@@ -352,4 +390,158 @@ export async function confirmReceipt(companyId, orderId, { actorUid, actorName, 
     });
   }
   return null;
+}
+
+// Vreme obrade (confirmedAt − createdAt, u ms) upisuje se kao broj na narudžbinu, da Admin tabla
+// može da izračuna tačan prosek za SVE narudžbine jednim upitom u bazi (agregacija), bez čitanja dokumenata.
+// Računa se iz vrednosti koje je postavio server, pa ne zavisi od sata na uređaju.
+export async function recordProcessingTime(companyId, orderId) {
+  const orderRef = doc(db, "companies", companyId, "orders", orderId);
+  const snap = await getDoc(orderRef);
+  if (!snap.exists()) return;
+  const created = toMillis(snap.data().createdAt), confirmed = toMillis(snap.data().confirmedAt);
+  if (created == null || confirmed == null) return;
+  await updateDoc(orderRef, { processingMs: Math.max(0, confirmed - created) });
+}
+// Greška ovde ne sme da obori potvrdu prijema (prosek se može dopuniti u backfill-orders.html).
+async function safeRecordProcessingTime(companyId, orderId) {
+  try { await recordProcessingTime(companyId, orderId); } catch (e) { console.error("Upis vremena obrade nije uspeo:", e); }
+}
+
+// Brza potvrda iz tabele: sva roba je primljena u celosti — zatvara narudžbinu i
+// potvrđuje sve lokacije isporuke (isto što detalji rade kad nema manjka).
+export async function confirmReceiptFull(companyId, orderId, { actorUid, actorName }) {
+  const locations = await getOrderDeliveryLocations(companyId, orderId);
+  await confirmReceipt(companyId, orderId, { actorUid, actorName, missingItemsToCarryOver: [] });
+  const pending = locations.filter((l) => l.status !== DELIVERY_LOCATION_STATUS.POTVRDJENO);
+  if (pending.length) {
+    const batch = writeBatch(db);
+    pending.forEach((l) => batch.update(doc(deliveryLocCol(companyId, orderId), l.id), { status: DELIVERY_LOCATION_STATUS.POTVRDJENO, confirmedAt: serverTimestamp() }));
+    await batch.commit();
+    await Promise.all(pending.map((l) => logAudit(companyId, { action: "delivery_location_confirmed", entity: "DeliveryLocations", entityId: l.id, actorName })));
+  }
+}
+
+// --- "Ponovi narudžbinu" posle odbijanja ---------------------------------------
+// Pravi NOVU narudžbinu sa istim stavkama, lokacijama, prioritetom i "ko je
+// tražio", dodeljenu istom isporučiocu koji je odbio. Originalna odbijena
+// narudžbina ostaje u istoriji (sa razlogom) i dobija oznaku repeatedAsOrderId,
+// pa dugme više ne nudi ponovni unos (nema dupliranja).
+const REPEAT_ITEM_FIELDS = [
+  "supplierId", "supplierName", "productId", "productName", "code", "unit", "quantity", "note", "priority",
+  "pickupLocationId", "pickupLocationName", "deliveryLocationId", "deliveryLocationName",
+];
+export async function repeatOrderAfterRejection(companyId, orderId, { actorUid, actorName }) {
+  const order = await getOrder(companyId, orderId);
+  if (!order) throw new Error("order_not_found");
+  if (order.status !== ORDER_STATUS.ODBIJENA) throw new Error("order_not_rejected");
+  if (order.repeatedAsOrderId) throw new Error("already_repeated");
+
+  const [items, locations] = await Promise.all([getOrderItems(companyId, orderId), getOrderDeliveryLocations(companyId, orderId)]);
+  // item.deliveryLocationId je ID podkolekcije stare narudžbine; createOrder očekuje
+  // ID iz matične liste lokacija (locationId) i sam ga preslikava na nove dokumente.
+  const subToMaster = Object.fromEntries(locations.map((l) => [l.id, l.locationId]));
+  const newItems = items.map((it) => {
+    const clean = {};
+    REPEAT_ITEM_FIELDS.forEach((k) => { if (it[k] !== undefined) clean[k] = it[k]; });
+    if (clean.deliveryLocationId && subToMaster[clean.deliveryLocationId]) clean.deliveryLocationId = subToMaster[clean.deliveryLocationId];
+    return clean;
+  });
+  const newLocations = locations.map((l) => ({ locationId: l.locationId, locationName: l.locationName, ...(l.itemProductIds ? { itemProductIds: l.itemProductIds } : {}) }));
+
+  const newId = await createOrder(companyId, {
+    createdByUid: order.createdByUid, createdByName: order.createdByName, priority: order.priority || "standardno",
+    requestedByName: order.requestedByName || "",
+    items: newItems, deliveryLocations: newLocations,
+    assignmentMode: "admin_bira",
+    assignTo: order.assignedToUid ? { uid: order.assignedToUid, name: order.assignedToName } : null,
+    extraFields: { repeatOfOrderId: orderId, repeatOfNumber: order.orderNumber },
+  });
+  const created = await getOrder(companyId, newId);
+  await updateDoc(doc(db, "companies", companyId, "orders", orderId), {
+    repeatedAsOrderId: newId, repeatedAsNumber: created?.orderNumber || "", updatedAt: serverTimestamp(),
+  });
+  await logAudit(companyId, { action: "order_repeated", entity: "Orders", entityId: orderId, actorUid, actorName, details: created?.orderNumber || "" });
+  return { id: newId, orderNumber: created?.orderNumber || "" };
+}
+
+// --- Polja za pretragu (searchText, supplierNames, deliveryLocationNames) -----
+export async function refreshOrderSearchData(companyId, orderId) {
+  const orderRef = doc(db, "companies", companyId, "orders", orderId);
+  const [snap, items, locations] = await Promise.all([getDoc(orderRef), getOrderItems(companyId, orderId), getOrderDeliveryLocations(companyId, orderId)]);
+  if (!snap.exists()) return;
+  await updateDoc(orderRef, buildSearchFields(snap.data(), items, locations));
+}
+// Greška pri osvežavanju pretrage ne sme da obori glavnu akciju (npr. dodelu).
+async function safeRefreshSearchData(companyId, orderId) {
+  try { await refreshOrderSearchData(companyId, orderId); } catch (e) { console.error("Osvežavanje polja za pretragu nije uspelo:", e); }
+}
+
+// --- Liste za kontrolne table (naručilac, isporučilac, admin) ----------------
+// field: "createdByUid" (naručilac), "assignedToUid" (isporučilac) ili null (cela firma — admin).
+// Izvori: (1) otvorene narudžbine — uživo, (2) zatvorene u poslednjih CLOSED_LIVE_HOURS sati —
+// uživo (za "Danas završeno"), (3) cela istorija po datumu kreiranja — ture po 30 na zahtev,
+// (4) ukupan broj narudžbina — broji baza, bez učitavanja dokumenata.
+const mapDocs = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+const scoped = (companyId, field, value) => (field ? [where(field, "==", value)] : []);
+
+export function listenOpenOrdersBy(companyId, field, value, callback, onError) {
+  const q = query(ordersCol(companyId), ...scoped(companyId, field, value), where("status", "in", OPEN_STATUSES));
+  return onSnapshot(q, (snap) => callback(mapDocs(snap)), onError);
+}
+// Sve narudžbine firme kreirane od zadatog datuma (za grafikon na Admin tabli) —
+// odvojeno od listenAllOrders (ograničen na 200), da brojke po danima budu tačne.
+export function listenOrdersSince(companyId, sinceDate, callback, onError) {
+  const q = query(ordersCol(companyId), where("createdAt", ">=", Timestamp.fromDate(sinceDate)), orderBy("createdAt", "desc"));
+  return onSnapshot(q, (snap) => callback(mapDocs(snap)), onError);
+}
+export function listenRecentClosedBy(companyId, field, value, sinceDate, callback, onError) {
+  const q = query(ordersCol(companyId), ...scoped(companyId, field, value), where("closedAt", ">=", Timestamp.fromDate(sinceDate)), orderBy("closedAt", "desc"));
+  return onSnapshot(q, (snap) => callback(mapDocs(snap)), onError);
+}
+// Jedna tura istorije po datumu kreiranja (najnovije prve), bez obzira na status.
+export async function getOrdersPageBy(companyId, field, value, cursorDoc, size = 30) {
+  const parts = [...scoped(companyId, field, value), orderBy("createdAt", "desc")];
+  if (cursorDoc) parts.push(startAfter(cursorDoc));
+  parts.push(limit(size));
+  const snap = await getDocs(query(ordersCol(companyId), ...parts));
+  return { orders: mapDocs(snap), cursor: snap.docs[snap.docs.length - 1] || null, hasMore: snap.docs.length === size };
+}
+// Ukupan broj narudžbina (svi statusi, svi datumi) — nezavisan od closedAt i drugih pomoćnih polja.
+export async function countOrdersBy(companyId, field, value) {
+  const q = query(ordersCol(companyId), ...scoped(companyId, field, value));
+  return (await getCountFromServer(q)).data().count;
+}
+// Istorija (za pretragu) — po 500, do SEARCH_CAP. Ako je zadat vremenski opseg (range.fromMs / toMs,
+// po datumu kreiranja), baza vraća samo taj period, pa se ne učitava cela istorija.
+export async function getAllOrdersBy(companyId, field, value, cap = SEARCH_CAP, range = {}) {
+  const out = [];
+  let cursor = null;
+  const bounds = [];
+  if (range.fromMs) bounds.push(where("createdAt", ">=", Timestamp.fromMillis(range.fromMs)));
+  if (range.toMs) bounds.push(where("createdAt", "<=", Timestamp.fromMillis(range.toMs)));
+  while (out.length < cap) {
+    const parts = [...scoped(companyId, field, value), ...bounds, orderBy("createdAt", "desc")];
+    if (cursor) parts.push(startAfter(cursor));
+    parts.push(limit(500));
+    const snap = await getDocs(query(ordersCol(companyId), ...parts));
+    out.push(...mapDocs(snap));
+    if (snap.docs.length < 500) return { orders: out, capped: false };
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  return { orders: out, capped: true };
+}
+
+// Admin: pretraga po početku broja narudžbine direktno u bazi (nema učitavanja istorije, nema granice od 5000).
+// Najnovije prve; najviše `max` rezultata.
+export async function searchOrdersByNumberPrefix(companyId, prefix, max = 500) {
+  const q = query(ordersCol(companyId), where("orderNumber", ">=", prefix), where("orderNumber", "<=", `${prefix}\uf8ff`), orderBy("orderNumber", "desc"), limit(max));
+  const snap = await getDocs(q);
+  return { orders: mapDocs(snap), capped: snap.docs.length === max };
+}
+// Admin: tačan prosek vremena obrade za sve narudžbine (agregacija u bazi nad poljem processingMs).
+// null ako još nijedna narudžbina nema to polje.
+export async function getAverageProcessingMs(companyId) {
+  const snap = await getAggregateFromServer(ordersCol(companyId), { avg: average("processingMs") });
+  return snap.data().avg;
 }
