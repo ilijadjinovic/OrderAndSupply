@@ -628,5 +628,15 @@
   "reactivate_item_existing_label": "Deactivated item in the catalog",
   "reactivate_item_activate_btn": "ACTIVATE AND ADD",
   "reactivate_item_new_btn": "ADD AS NEW",
-  "toast_item_reactivated": "Item “{name}” was reactivated and added to the order."
+  "toast_item_reactivated": "Item “{name}” was reactivated and added to the order.",
+  "tab_by_item": "By item",
+  "report_detailed_checkbox": "Detailed",
+  "report_col_total_quantity": "Total quantity",
+  "report_title_items": "Report — by item",
+  "report_title_orders_detailed": "Report — orders (detailed)",
+  "report_subtitle_period": "Period: {from} – {to}",
+  "report_subtitle_all_periods": "All periods",
+  "report_subtitle_count": "Orders: {count}",
+  "report_subtitle_total": "Total: {amount}",
+  "report_no_items": "This order has no items."
 }

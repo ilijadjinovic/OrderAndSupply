@@ -628,5 +628,15 @@
   "reactivate_item_existing_label": "Pasivizirani artikal u katalogu",
   "reactivate_item_activate_btn": "AKTIVIRAJ I DODAJ",
   "reactivate_item_new_btn": "DODAJ KAO NOVI",
-  "toast_item_reactivated": "Artikal „{name}“ je ponovo aktiviran i dodat u narudžbenicu."
+  "toast_item_reactivated": "Artikal „{name}“ je ponovo aktiviran i dodat u narudžbenicu.",
+  "tab_by_item": "Po artiklima",
+  "report_detailed_checkbox": "Detaljno",
+  "report_col_total_quantity": "Ukupna količina",
+  "report_title_items": "Izveštaj — po artiklima",
+  "report_title_orders_detailed": "Izveštaj — narudžbine (detaljno)",
+  "report_subtitle_period": "Period: {from} – {to}",
+  "report_subtitle_all_periods": "Svi periodi",
+  "report_subtitle_count": "Broj narudžbina: {count}",
+  "report_subtitle_total": "Ukupno: {amount}",
+  "report_no_items": "Narudžbina nema stavki."
 }
