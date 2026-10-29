@@ -690,5 +690,9 @@
   "delivery_supplier_placeholder": "— izaberi dobavljača —",
   "delivery_supplier_badge": "Dobavljač",
   "delivery_supplier_group": "Dobavljači (povrat robe)",
-  "delivery_supplier_same_warning": "Pažnja: {names} je istovremeno i dobavljač od koga se roba preuzima i odredište isporuke (povrat). Proverite da je to namerno."
+  "delivery_supplier_same_warning": "Pažnja: {names} je istovremeno i dobavljač od koga se roba preuzima i odredište isporuke (povrat). Proverite da je to namerno.",
+  "pickup_choose_placeholder": "— izaberi lokaciju preuzimanja —",
+  "pickup_not_selected": "lokacija preuzimanja nije izabrana",
+  "toast_select_pickup_first": "Izaberite lokaciju preuzimanja pre dodavanja artikla.",
+  "toast_select_pickup_for": "Izaberite lokaciju preuzimanja za dobavljača: {name}"
 }

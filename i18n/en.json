@@ -690,5 +690,9 @@
   "delivery_supplier_placeholder": "— choose supplier —",
   "delivery_supplier_badge": "Supplier",
   "delivery_supplier_group": "Suppliers (goods return)",
-  "delivery_supplier_same_warning": "Note: {names} is both the supplier goods are picked up from and a delivery destination (return). Make sure this is intended."
+  "delivery_supplier_same_warning": "Note: {names} is both the supplier goods are picked up from and a delivery destination (return). Make sure this is intended.",
+  "pickup_choose_placeholder": "— choose pickup location —",
+  "pickup_not_selected": "pickup location not selected",
+  "toast_select_pickup_first": "Select a pickup location before adding an item.",
+  "toast_select_pickup_for": "Select a pickup location for supplier: {name}"
 }

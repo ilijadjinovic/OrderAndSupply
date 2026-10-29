@@ -668,3 +668,8 @@ tr.row-inactive td:not(:first-child):not(:last-child):not(:nth-last-child(2)) { 
 .rep-detail-table td, .rep-detail-table th { padding: 6px 8px; }
 .rep-detail-finance { margin-top: 10px; font-weight: 700; }
 .rep-detail-total { text-align: right; font-weight: 700; padding-top: 6px; }
+
+/* Neizabrana obavezna lokacija preuzimanja (nova narudžbina) — isti izgled kao fokus, u boji greške */
+select.field-error, select.field-error:focus { border-color: var(--color-danger); box-shadow: 0 0 0 3px var(--color-danger-soft); }
+.field-error-text { color: var(--color-danger); font-weight: 600; }
+.supplier-block-head select.supplier-pickup { margin: 0 12px; max-width: 260px; }
