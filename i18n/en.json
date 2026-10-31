@@ -694,5 +694,21 @@
   "pickup_choose_placeholder": "— choose pickup location —",
   "pickup_not_selected": "pickup location not selected",
   "toast_select_pickup_first": "Select a pickup location before adding an item.",
-  "toast_select_pickup_for": "Select a pickup location for supplier: {name}"
+  "toast_select_pickup_for": "Select a pickup location for supplier: {name}",
+  "carry_modal_title": "New order for the shortage",
+  "carry_modal_intro": "{count} item(s) did not arrive in full. This is a new order for what is missing, pre-filled like the original — change anything you want before sending.",
+  "carry_fulfiller_auto": "The system assigns the fulfiller automatically.",
+  "carry_fulfiller_admin": "The company admin assigns the fulfiller.",
+  "carry_fulfiller_choose": "— choose fulfiller —",
+  "carry_btn_create": "Confirm receipt and send new order",
+  "carry_btn_skip": "Confirm receipt without a new order",
+  "carry_btn_back": "Back",
+  "toast_receipt_confirmed_carried": "Receipt confirmed. New order {number} was sent for the shortage.",
+  "toast_carry_over_error": "The new order was not created and receipt was not confirmed. Please try again.",
+  "toast_receipt_confirm_error": "Receipt was not confirmed. Please try again.",
+  "toast_invalid_received_qty": "Enter a valid received quantity for: {name}",
+  "toast_carry_pick_one": "Keep at least one item for the new order, or confirm receipt without it.",
+  "toast_order_created_not_assigned": "The order was created, but no fulfiller was assigned. An admin can assign one.",
+  "carried_from_label": "Continuation of order",
+  "carried_over_label": "Shortage carried to"
 }

@@ -4,7 +4,7 @@ import { loadLang, t } from "./i18n.js";
 import { getSuppliers, getSupplierLocations, getSupplierDestinations } from "./suppliers.js";
 import { getProducts, addProduct, updateProduct, getCategories, setProductActive, isProductActive } from "./catalog.js";
 import { getLocations } from "./locations.js";
-import { createOrder, assignOrder, getRecentRequesterNames } from "./orders.js";
+import { submitOrder, getRecentRequesterNames } from "./orders.js";
 import { getIsporucioci } from "./users.js";
 import { getTemplates, saveTemplate } from "./templates.js";
 import { getCompanySettings } from "./settings.js";
@@ -865,15 +865,15 @@ document.getElementById("submit-order").addEventListener("click", async () => {
 
   try {
     const items = getCartInDisplayOrder().map(({ tempId, ...rest }) => rest);
-    const orderId = await createOrder(companyId, {
+    const chosenOpt = isporucilacSelect.options[isporucilacSelect.selectedIndex];
+    const { orderId, assignFailed } = await submitOrder(companyId, {
       createdByUid: uidValue, createdByName: actorName, priority, requestedByName, items,
       deliveryLocations: chosenDeliveryLocations, assignmentMode,
+    }, {
+      assignedTo: assignmentMode === "narucilac_bira" && isporucilacSelect.value ? { uid: isporucilacSelect.value, name: chosenOpt.textContent } : null,
+      actorName,
     });
-
-    if (assignmentMode === "narucilac_bira" && isporucilacSelect.value) {
-      const chosenOpt = isporucilacSelect.options[isporucilacSelect.selectedIndex];
-      await assignOrder(companyId, orderId, { assignedToUid: isporucilacSelect.value, assignedToName: chosenOpt.textContent, actorName });
-    }
+    if (assignFailed) toast(t("toast_order_created_not_assigned"), "error");
 
     const saveAsType = document.getElementById("save-as-type").value;
     const saveAsName = document.getElementById("save-as-name").value.trim();

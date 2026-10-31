@@ -694,5 +694,21 @@
   "pickup_choose_placeholder": "— izaberi lokaciju preuzimanja —",
   "pickup_not_selected": "lokacija preuzimanja nije izabrana",
   "toast_select_pickup_first": "Izaberite lokaciju preuzimanja pre dodavanja artikla.",
-  "toast_select_pickup_for": "Izaberite lokaciju preuzimanja za dobavljača: {name}"
+  "toast_select_pickup_for": "Izaberite lokaciju preuzimanja za dobavljača: {name}",
+  "carry_modal_title": "Nova narudžbina za manjak",
+  "carry_modal_intro": "{count} artikala nije stiglo u punoj količini. Ovo je nova narudžbina sa onim što fali, popunjena kao original — izmenite šta želite pre slanja.",
+  "carry_fulfiller_auto": "Isporučioca dodeljuje sistem automatski.",
+  "carry_fulfiller_admin": "Isporučioca dodeljuje admin firme.",
+  "carry_fulfiller_choose": "— izaberi isporučioca —",
+  "carry_btn_create": "Potvrdi prijem i pošalji novu narudžbinu",
+  "carry_btn_skip": "Potvrdi prijem bez nove narudžbine",
+  "carry_btn_back": "Nazad",
+  "toast_receipt_confirmed_carried": "Prijem potvrđen. Nova narudžbina {number} je poslata za manjak.",
+  "toast_carry_over_error": "Nova narudžbina nije kreirana, a prijem nije potvrđen. Pokušajte ponovo.",
+  "toast_receipt_confirm_error": "Prijem nije potvrđen. Pokušajte ponovo.",
+  "toast_invalid_received_qty": "Unesite ispravnu primljenu količinu za: {name}",
+  "toast_carry_pick_one": "Ostavite bar jedan artikal za novu narudžbinu ili potvrdite prijem bez nje.",
+  "toast_order_created_not_assigned": "Narudžbina je kreirana, ali isporučilac nije dodeljen. Admin ga može dodeliti.",
+  "carried_from_label": "Nastavak narudžbine",
+  "carried_over_label": "Manjak prenet u"
 }
