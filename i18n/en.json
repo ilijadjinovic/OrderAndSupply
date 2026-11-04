@@ -227,6 +227,8 @@
   "report_title_narucioci": "Report — by requester",
   "report_title_isporucioci": "Report — by fulfiller",
   "report_title_suppliers": "Report — by supplier",
+  "report_col_paid_to_supplier": "Paid to supplier",
+  "report_title_drill": "Orders — {name}",
   "report_meta_count": "{count} orders in the report.",
   "finance_total_orders": "Total orders",
   "finance_with_amount": "With an entered amount",

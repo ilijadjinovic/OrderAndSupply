@@ -227,6 +227,8 @@
   "report_title_narucioci": "Izveštaj — po naručiocima",
   "report_title_isporucioci": "Izveštaj — po isporučiocima",
   "report_title_suppliers": "Izveštaj — po dobavljačima",
+  "report_col_paid_to_supplier": "Plaćeno dobavljaču",
+  "report_title_drill": "Narudžbenice — {name}",
   "report_meta_count": "{count} narudžbina u izveštaju.",
   "finance_total_orders": "Ukupno narudžbina",
   "finance_with_amount": "Sa unetim iznosom",
