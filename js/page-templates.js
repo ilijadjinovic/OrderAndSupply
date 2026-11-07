@@ -3,10 +3,13 @@ import { renderNav } from "./nav.js";
 import { loadLang, t } from "./i18n.js";
 import { getTemplates, deleteTemplate, isDueToday } from "./templates.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { templatePopHtml } from "./table-popovers.js";
 
 await loadLang();
 let companyId;
 let activeType = "sablon";
+let currentTemplates = [];
 
 requireAuth([ROLES.NARUCILAC], (user, profile) => {
   companyId = profile.companyId;
@@ -18,6 +21,7 @@ async function load() {
   const body = document.getElementById("templates-body");
   body.innerHTML = `<tr class="empty-row"><td colspan="4">${t("loading_ellipsis")}</td></tr>`;
   const list = await getTemplates(companyId, activeType);
+  currentTemplates = list;
   if (!list.length) { body.innerHTML = `<tr class="empty-row"><td colspan="4">${t("no_saved_items_in_category")}</td></tr>`; return; }
 
   body.innerHTML = list.map((tp) => {
@@ -27,8 +31,8 @@ async function load() {
       ? `${(tp.recurringDays || []).join(", ") || "—"} ${isDueToday(tp) ? `<span class="badge badge-amber">${t("today")}</span>` : ""}`
       : `<span class="muted">—</span>`;
     return `
-      <tr>
-        <td><strong>${escapeHtml(tp.name)}</strong><div class="muted" style="font-size:12px;">${t("items_count", { count: tp.items.length })}</div></td>
+      <tr data-id="${tp.id}">
+        <td><strong>${escapeHtml(tp.name)}</strong>${itemsInfoBtnHtml()}<div class="muted" style="font-size:12px;">${t("items_count", { count: tp.items.length })}</div></td>
         <td class="muted" style="font-size:13px;">${preview}${more}</td>
         <td>${recurring}</td>
         <td>
@@ -55,4 +59,10 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     activeType = btn.dataset.type;
     load();
   });
+});
+
+// Plutajući prikaz uz red šablona: sve stavke sa količinama i dani ponavljanja
+attachRowPopover(document.getElementById("templates-body"), {
+  hoverSelector: "tr[data-id]",
+  getContent: (row) => { const tp = currentTemplates.find((x) => x.id === row.dataset.id); return tp ? templatePopHtml(tp) : ""; },
 });

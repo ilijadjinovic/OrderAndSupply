@@ -3,10 +3,10 @@ import { renderNav } from "./nav.js";
 import { loadLang, t, currentLang } from "./i18n.js";
 import {
   listenOrdersSince, listenOpenOrdersBy, listenRecentClosedBy,
-  getOrdersPageBy, countOrdersBy, searchOrdersByNumberPrefix, getAverageProcessingMs,
+  getOrdersPageBy, countOrdersBy, searchOrdersByNumberPrefix, getAverageProcessingMs, getAllOrdersBy,
 } from "./orders.js";
 import { attachOrderItemsPopover, itemsInfoBtnHtml } from "./order-items-popover.js";
-import { isLate, allViewList, compareByCreatedDesc, toMillis, orderNumberPrefix, PAGE_SIZE, CLOSED_LIVE_HOURS } from "./dash-logic.js";
+import { isLate, allViewList, compareByCreatedDesc, toMillis, orderNumberPrefix, parseCriteria, matchesSearch, PAGE_SIZE, CLOSED_LIVE_HOURS, SEARCH_CACHE_MS } from "./dash-logic.js";
 import { formatDate, escapeHtml, badgeClassForStatus, statusLabel, ROLES, roleLabel, debounce, toast } from "./utils.js";
 
 await loadLang();
@@ -19,7 +19,8 @@ const D = {
   open: [], today: [], pages: [], cursor: null, exhausted: false, loadingPage: false, gotPage: false,
   gotOpen: false, gotToday: false, total: null, totalLoading: false, openSig: null,
   visible: PAGE_SIZE, list: [],
-  searchResults: [], searchLoading: false, searchCapped: false, searchSeq: 0, // pretraga po početku broja — u bazi
+  searchResults: [], searchLoading: false, searchCapped: false, searchSeq: 0, // pretraga cele istorije (isto kao na tablama naručioca/isporučioca)
+  searchCache: null, searchCacheAt: 0, searchInflight: null,
   avgMs: null, // prosečno vreme obrade svih narudžbina (agregacija u bazi)
 };
 let chartOrders = []; // narudžbine iz poslednjih 14 dana (poseban upit — tačne brojke i kad ih ima više od 200)
@@ -93,19 +94,40 @@ requireAuth([ROLES.ADMIN], (user, profile) => {
     catch (err) { console.error("Prosečno vreme obrade:", err); }
     renderMetrics();
   };
-  // Pretraga po početku broja narudžbine radi u bazi (bez učitavanja istorije)
+  // Pretraga: broj, artikal, osoba, dobavljač i lokacija isporuke (isto polje "searchText" kao na tablama
+  // naručioca i isporučioca). Istorija (do 5000 najnovijih) se čita jednom i pamti 5 min, pa dalje kucanje
+  // ne pravi nova čitanja; istovremena pretraga deli isto čitanje.
+  const loadHistory = () => {
+    if (D.searchCache && Date.now() - D.searchCacheAt <= SEARCH_CACHE_MS) return Promise.resolve(D.searchCache);
+    if (!D.searchInflight) {
+      D.searchInflight = getAllOrdersBy(companyId, null, null)
+        .then(({ orders, capped }) => { D.searchCache = orders; D.searchCapped = capped; D.searchCacheAt = Date.now(); return orders; })
+        .finally(() => { D.searchInflight = null; });
+    }
+    return D.searchInflight;
+  };
   runSearch = async () => {
     const seq = ++D.searchSeq;
-    if (!searchTerm) { D.searchLoading = false; D.searchResults = []; refresh(); return; }
-    D.searchLoading = true; refresh();
+    const crit = parseCriteria({ text: searchTerm });
+    if (!crit.active) { D.searchLoading = false; D.searchResults = []; refresh(); return; }
+    const needsLoad = !D.searchCache || Date.now() - D.searchCacheAt > SEARCH_CACHE_MS;
+    if (needsLoad) { D.searchLoading = true; refresh(); }
     try {
-      const { orders, capped } = await searchOrdersByNumberPrefix(companyId, orderNumberPrefix(searchTerm));
+      const history = await loadHistory();
       if (seq !== D.searchSeq) return; // u međuvremenu je pokrenuta novija pretraga
-      D.searchResults = orders; D.searchCapped = capped;
+      const results = history.filter((o) => matchesSearch(o, crit));
+      // Firma ima više od 5000 narudžbina: starije se i dalje nalaze po početku broja (direktno u bazi, bez granice)
+      if (D.searchCapped && crit.tokens.length === 1) {
+        const { orders } = await searchOrdersByNumberPrefix(companyId, orderNumberPrefix(searchTerm));
+        if (seq !== D.searchSeq) return;
+        const have = new Set(results.map((o) => o.id));
+        orders.forEach((o) => { if (!have.has(o.id)) results.push(o); });
+      }
+      D.searchResults = results.sort(compareByCreatedDesc);
     } catch (err) {
       if (seq !== D.searchSeq) return;
       console.error(err);
-      D.searchResults = []; D.searchCapped = false;
+      D.searchResults = [];
       toast(t("dash_load_error"), "error");
     }
     D.searchLoading = false;
@@ -272,7 +294,7 @@ function renderPager() {
   const loading = !D.gotOpen || !D.gotToday || (all && !D.gotPage) || (searchTerm && D.searchLoading);
   if (loading || (!total && !canMore)) { host.innerHTML = ""; return; }
   const totalText = all && D.total == null ? "…" : total;
-  const capped = searchTerm && D.searchCapped ? ` <span class="muted">${t("dash_prefix_capped")}</span>` : "";
+  const capped = searchTerm && D.searchCapped ? ` <span class="muted">${t("dash_search_capped_admin")}</span>` : "";
   host.innerHTML = `
     <span class="muted pager-count">${t("dash_showing_count", { shown, total: totalText })}</span>${capped}
     ${canMore ? `<button type="button" class="btn btn-sm btn-outline" id="load-more-btn" ${D.loadingPage ? "disabled" : ""}>${D.loadingPage ? t("loading_ellipsis") : t("dash_load_more")}</button>` : ""}`;

@@ -5,6 +5,8 @@ import { listenAllCompanies, getGlobalStats, blockCompany, deleteCompany } from 
 import { getRecentAuditLogs } from "./audit.js";
 import { formatDate, escapeHtml, toast } from "./utils.js";
 import { ROLES } from "./utils.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { companyPopHtml, auditPopHtml } from "./table-popovers.js";
 
 await loadLang();
 
@@ -24,15 +26,18 @@ async function refreshStats() {
   `;
 }
 
+let latestCompanies = [], latestLogs = [];
+
 function renderCompanies(companies) {
+  latestCompanies = companies;
   const body = document.getElementById("companies-body");
   if (!companies.length) {
     body.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_registered_companies")}</td></tr>`;
     return;
   }
   body.innerHTML = companies.map((c) => `
-    <tr>
-      <td><strong>${escapeHtml(c.name)}</strong></td>
+    <tr data-id="${c.id}">
+      <td><strong>${escapeHtml(c.name)}</strong>${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(c.pib || "—")}</td>
       <td>${escapeHtml(c.email || "—")}</td>
       <td><span class="badge ${c.status === "blocked" ? "badge-red" : "badge-teal"}">${c.status === "blocked" ? t("blocked") : t("active")}</span></td>
@@ -81,12 +86,23 @@ async function loadLogs(companyId) {
     body.innerHTML = `<tr class="empty-row"><td colspan="4">${t("no_logged_actions")}</td></tr>`;
     return;
   }
-  body.innerHTML = logs.map((l) => `
-    <tr>
-      <td>${formatDate(l.createdAt)}</td>
+  latestLogs = logs;
+  body.innerHTML = logs.map((l, i) => `
+    <tr data-id="${i}">
+      <td>${formatDate(l.createdAt)}${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(l.action)}</td>
       <td>${escapeHtml(l.actorName || t("system_actor_fallback"))}</td>
       <td>${escapeHtml(auditDetailsText(l) || "—")}</td>
     </tr>
   `).join("");
 }
+
+// Plutajući prikaz: uz red firme (PIB, email, registracija...) i uz red dnevnika (ceo zapis sa punim tekstom detalja)
+attachRowPopover(document.getElementById("companies-body"), {
+  hoverSelector: "tr[data-id]",
+  getContent: (row) => { const c = latestCompanies.find((x) => x.id === row.dataset.id); return c ? companyPopHtml(c) : ""; },
+});
+attachRowPopover(document.getElementById("audit-body"), {
+  hoverSelector: "tr[data-id]",
+  getContent: (row) => { const l = latestLogs[Number(row.dataset.id)]; return l ? auditPopHtml(l, auditDetailsText(l)) : ""; },
+});

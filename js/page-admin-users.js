@@ -4,6 +4,8 @@ import { loadLang, t } from "./i18n.js";
 import { listenCompanyUsers, createCompanyUser, updateCompanyUser } from "./users.js";
 import { getCompanySettings } from "./settings.js";
 import { escapeHtml, toast, ROLES, roleLabel, formatDate } from "./utils.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { userPopHtml } from "./table-popovers.js";
 
 await loadLang();
 let companyId, currentName, currentRole;
@@ -55,8 +57,8 @@ function renderUsers(users) {
   const body = document.getElementById("users-body");
   if (!users.length) { body.innerHTML = `<tr class="empty-row"><td colspan="5">${t("no_users")}</td></tr>`; return; }
   body.innerHTML = users.map((u) => `
-    <tr class="row-link" data-id="${u.id}" title="${t("details_label")}">
-      <td><strong>${escapeHtml(u.name)}</strong></td>
+    <tr class="row-link" data-id="${u.id}">
+      <td><strong>${escapeHtml(u.name)}</strong>${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(u.email)}</td>
       <td><span class="badge badge-blue">${roleLabel(u.role)}</span></td>
       <td>${u.active === false ? `<span class="badge badge-red">${t("inactive")}</span>` : `<span class="badge badge-teal">${t("active")}</span>`}</td>
@@ -80,6 +82,12 @@ function renderUsers(users) {
     });
   });
 }
+
+// Plutajući prikaz uz red korisnika (samo podaci koji su već u listi)
+attachRowPopover(document.getElementById("users-body"), {
+  hoverSelector: "tr.row-link",
+  getContent: (row) => { const u = latestUsers.find((x) => x.id === row.dataset.id); return u ? userPopHtml(u) : ""; },
+});
 
 const userDetailsModal = document.getElementById("user-details-modal");
 

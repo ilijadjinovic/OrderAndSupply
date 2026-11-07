@@ -70,6 +70,14 @@ i promeni polje `role` u `master_admin`.
   po periodu, naručiocu, isporučiocu, dobavljaču i statusu; pregledi po
   narudžbenicama (detaljno), po naručiocima, po isporučiocima, po dobavljačima i
   finansijski pregled; izvoz u CSV/Excel/PDF (`js/reports.js`, `js/page-admin-reports.js`).
+- **Plutajući prikaz uz redove tabela** — hover (na telefonu ikonica „i") otvara balon sa osnovnim
+  sadržajem reda: izveštaji (svih 5 tabova), dobavljači (kontakt + lokacije preuzimanja), katalog,
+  lokacije, šabloni, korisnici, firme i dnevnik (master admin), stavke narudžbine, kontrolne table.
+  Kod: `js/row-popover.js` (opšta mehanika), `js/table-popovers.js` (sadržaj), `js/report-popovers.js`,
+  `js/order-items-popover.js`; vidi `docs/PLUTAJUCI-PRIKAZ-I-PRETRAGA.md`.
+- **Pretraga kataloga** — polje iznad liste artikala dobavljača (naziv, šifra, barkod; bez kvačica,
+  ćirilica/latinica, više reči) + filteri kategorije i statusa; izbor/grupne akcije važe samo za
+  prikazane artikle (`js/catalog-search.js`, `node tests/catalog-search.test.mjs`).
 - **Koordinate lokacija i „🧭 Predloži rutu"** — lokacije preuzimanja dobavljača i
   lokacije firme (magacini) imaju polja `lat`, `lng`, `geoSource` (`auto`/`manual`),
   `geoQuality` (`tacno`/`ulica`/`naselje`) i `geoUpdatedAt`. Pri dodavanju lokacije ili

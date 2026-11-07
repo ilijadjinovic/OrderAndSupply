@@ -1,6 +1,6 @@
 // Pokretanje: node tests/report-logic.test.mjs
 import assert from "node:assert/strict";
-import { aggregateBySupplier, aggregateByItem, groupItemsBySupplier, parseQty, fmtQty } from "../js/report-logic.js";
+import { aggregateBySupplier, aggregateByItem, groupItemsBySupplier, parseQty, fmtQty, itemKey, toDate, summarizeOrders, topBy, pickSuppliers, pickNarucilac } from "../js/report-logic.js";
 
 let n = 0; const ok = (name, fn) => { fn(); n++; console.log("  ✓", name); };
 
@@ -79,5 +79,37 @@ ok("aggregateBySupplier: dobavljač samo u stavkama se vidi; prazan ulaz; sort p
   assert.deepEqual(a.map((x) => x.key), ["s1", "s2"]);
   assert.equal(a[1].orderCount, 1); assert.equal(a[1].total, 0);
   assert.deepEqual(aggregateBySupplier(undefined), []);
+});
+
+const E = [
+  { r: { id: "a", status: "zavrsena", createdAt: new Date("2026-10-01"), createdByUid: "u1", createdByName: "Pera", items: [{ supplierId: "s1", supplierName: "Metro" }, { supplierId: "s1", supplierName: "Metro" }, { supplierId: "s2", supplierName: "Imlek" }] } },
+  { r: { id: "b", status: "zavrsena", createdAt: { seconds: Date.parse("2026-10-09") / 1000 }, createdByUid: "u1", createdByName: "Pera", items: [{ supplierId: "s1", supplierName: "Metro" }] } },
+  { r: { id: "c", status: "otkazana", createdAt: { toDate: () => new Date("2026-10-05") }, createdByUid: "u2", createdByName: "Mika", items: [] } },
+];
+ok("itemKey: isti ključ kao u aggregateByItem; prazan bez oznake", () => {
+  assert.equal(itemKey({ productId: "P1", unit: " KG " }), "p1|kg");
+  assert.equal(itemKey({ code: "12", unit: "kom" }), "12|kom");
+  assert.equal(itemKey({ unit: "kom" }), "");
+  assert.equal(aggregateByItem(rows).find((x) => x.code === "1012").key, itemKey(rows[0].items[0]));
+});
+ok("toDate: Timestamp, Date, {seconds}, prazno", () => {
+  assert.equal(toDate(new Date("2026-01-02")).getFullYear(), 2026); assert.equal(toDate({ seconds: 0 }).getTime(), 0);
+  assert.equal(toDate({ toDate: () => new Date(5) }).getTime(), 5); assert.equal(toDate(null), null);
+});
+ok("summarizeOrders: broj po statusu (opadajuće) i poslednji datum", () => {
+  const s = summarizeOrders(E);
+  assert.equal(s.count, 3); assert.deepEqual(s.byStatus, [{ status: "zavrsena", count: 2 }, { status: "otkazana", count: 1 }]);
+  assert.equal(s.last.toISOString().slice(0, 10), "2026-10-09");
+  assert.deepEqual(summarizeOrders([]), { count: 0, byStatus: [], last: null });
+});
+ok("topBy + pickSuppliers: dobavljač se broji jednom po narudžbini; ograničenje n", () => {
+  const top = topBy(E, pickSuppliers, 3);
+  assert.deepEqual(top.map((x) => [x.name, x.weight]), [["Metro", 2], ["Imlek", 1]]);
+  assert.equal(topBy(E, pickSuppliers, 1).length, 1);
+});
+ok("topBy: težine (količine) i jedinica; pickNarucilac", () => {
+  const q = topBy(E, (e) => [{ key: "x", name: "Art", unit: "kg", weight: 2.5 }], 5);
+  assert.deepEqual(q, [{ key: "x", name: "Art", unit: "kg", weight: 7.5 }]);
+  assert.deepEqual(topBy(E, pickNarucilac, 2).map((x) => [x.name, x.weight]), [["Pera", 2], ["Mika", 1]]);
 });
 console.log(`\n${n} testova prošlo`);

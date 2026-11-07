@@ -7,10 +7,15 @@ import {
   deleteProduct, bulkDeleteProducts, setProductActive, bulkSetProductsActive, isProductActive,
 } from "./catalog.js";
 import { escapeHtml, toast, getParam, ROLES } from "./utils.js";
+import { filterProducts } from "./catalog-search.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { productPopHtml } from "./table-popovers.js";
 
 await loadLang();
 let companyId, actorName, currentUid, currentRole, categories = [], unsubProducts = null;
 let currentSupplierId = null, currentProducts = [], selectedIds = new Set();
+let visibleProducts = [];                                  // currentProducts posle pretrage i filtera — samo ovo se prikazuje i bira
+const filters = { query: "", categoryId: "", status: "" };
 
 requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], async (user, profile) => {
   companyId = profile.companyId; actorName = profile.name;
@@ -33,28 +38,35 @@ requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], async (user, profile) => {
 function loadProducts(supplierId) {
   if (unsubProducts) unsubProducts();
   currentSupplierId = supplierId;
+  resetFilters();
   selectedIds.clear();
   updateBulkEditBar();
   if (!supplierId) return;
   unsubProducts = listenProducts(companyId, supplierId, (products) => renderProducts(products, supplierId));
 }
 
-function renderProducts(products, supplierId) {
-  currentProducts = products;
+function renderProducts(allProducts, supplierId) {
+  currentProducts = allProducts;
+  // Pretraga i filteri: prikazuje se (i bira) samo ono što prolazi filtere.
+  visibleProducts = filterProducts(allProducts, filters, isProductActive);
+  const products = visibleProducts;
+  updateShownCount();
   // Izbor se čuva preko re-renderovanja (npr. live update kataloga), ali samo za
-  // proizvode koji i dalje postoje.
+  // proizvode koji su i dalje prikazani — skriveni artikli ne mogu ostati izabrani
+  // (da grupno brisanje/izmena ne pogodi artikle koji se ne vide na ekranu).
   const stillValid = new Set(products.map((p) => p.id));
   selectedIds = new Set(Array.from(selectedIds).filter((id) => stillValid.has(id)));
 
   const body = document.getElementById("products-body");
-  if (!products.length) { body.innerHTML = `<tr class="empty-row"><td colspan="9">${t("no_products_for_supplier")}</td></tr>`; updateBulkEditBar(); return; }
+  if (!allProducts.length) { body.innerHTML = `<tr class="empty-row"><td colspan="9">${t("no_products_for_supplier")}</td></tr>`; updateBulkEditBar(); return; }
+  if (!products.length) { body.innerHTML = `<tr class="empty-row"><td colspan="9">${t("catalog_no_search_results")}</td></tr>`; updateBulkEditBar(); return; }
   body.innerHTML = products.map((p) => {
     const catName = categories.find((c) => c.id === p.categoryId)?.name || "—";
     const active = isProductActive(p);
-    return `<tr class="row-link${active ? "" : " row-inactive"}" data-id="${p.id}" title="${t("details_label")}">
+    return `<tr class="row-link${active ? "" : " row-inactive"}" data-id="${p.id}">
       <td><input type="checkbox" class="product-select-cb" data-id="${p.id}" ${selectedIds.has(p.id) ? "checked" : ""} /></td>
       <td class="mono">${escapeHtml(p.code || "—")}</td>
-      <td><strong>${escapeHtml(p.name)}</strong></td>
+      <td><strong>${escapeHtml(p.name)}</strong>${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(p.unit)}</td>
       <td>${escapeHtml(catName)}</td>
       <td>${p.vatRate}%</td>
@@ -69,7 +81,7 @@ function renderProducts(products, supplierId) {
   body.querySelectorAll("button[data-action]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const product = products.find((x) => x.id === btn.dataset.id);
+      const product = allProducts.find((x) => x.id === btn.dataset.id);
       if (!product) return;
       if (btn.dataset.action === "delete") await handleDelete([product]);
       else await handleSetActive([product], !isProductActive(product));
@@ -81,7 +93,7 @@ function renderProducts(products, supplierId) {
   body.querySelectorAll("tr.row-link").forEach((row) => {
     row.addEventListener("click", (e) => {
       if (e.target.closest(".product-select-cb")) return;
-      const product = products.find((x) => x.id === row.dataset.id);
+      const product = allProducts.find((x) => x.id === row.dataset.id);
       if (product) openProductDetail(product, supplierId);
     });
   });
@@ -203,7 +215,7 @@ document.getElementById("bulk-activate-btn").addEventListener("click", () => han
 // polja (kategorija, JM, PDV, min. količina) odjednom umesto jedan po jedan. ---
 const selectAllCb = document.getElementById("products-select-all");
 selectAllCb.addEventListener("change", () => {
-  if (selectAllCb.checked) currentProducts.forEach((p) => selectedIds.add(p.id));
+  if (selectAllCb.checked) visibleProducts.forEach((p) => selectedIds.add(p.id));   // samo prikazani (posle pretrage/filtera)
   else selectedIds.clear();
   renderProducts(currentProducts, currentSupplierId);
 });
@@ -213,8 +225,8 @@ function updateBulkEditBar() {
   const count = selectedIds.size;
   bar.classList.toggle("hidden", count === 0);
   document.getElementById("bulk-edit-count").textContent = t("bulk_selected_count", { count });
-  selectAllCb.checked = currentProducts.length > 0 && count === currentProducts.length;
-  selectAllCb.indeterminate = count > 0 && count < currentProducts.length;
+  selectAllCb.checked = visibleProducts.length > 0 && count === visibleProducts.length;
+  selectAllCb.indeterminate = count > 0 && count < visibleProducts.length;
 }
 
 document.getElementById("bulk-edit-clear-btn").addEventListener("click", () => {
@@ -308,7 +320,51 @@ document.getElementById("product-edit-form").addEventListener("submit", async (e
 
 function fillCategorySelect() {
   document.getElementById("p-category").innerHTML = categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") || `<option value="">${t("no_category")}</option>`;
+  // Filter po kategoriji: „Sve kategorije" + kategorije; izbor se čuva dok kategorija postoji
+  const sel = document.getElementById("catalog-filter-category");
+  sel.innerHTML = `<option value="">${t("all_categories_opt")}</option>` + categories.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  if (!categories.some((c) => c.id === filters.categoryId)) filters.categoryId = "";
+  sel.value = filters.categoryId;
 }
+
+// --- Pretraga i filteri iznad liste artikala (rade nad već učitanim artiklima dobavljača, bez novih čitanja) ---
+const searchInput = document.getElementById("catalog-search");
+const searchClear = document.getElementById("catalog-search-clear");
+const statusFilter = document.getElementById("catalog-filter-status");
+const categoryFilter = document.getElementById("catalog-filter-category");
+
+function updateShownCount() {
+  document.getElementById("catalog-shown").textContent = currentProducts.length
+    ? t("catalog_shown_of", { shown: visibleProducts.length, total: currentProducts.length }) : "";
+  searchClear.classList.toggle("hidden", !searchInput.value);
+}
+
+function resetFilters() {
+  filters.query = ""; filters.categoryId = ""; filters.status = "";
+  searchInput.value = ""; statusFilter.value = ""; categoryFilter.value = "";
+}
+
+// Promena pretrage/filtera: ponovo iscrtava; ako je to poništilo izbor skrivenih artikala, korisnik se obavesti.
+function onFiltersChanged() {
+  const before = selectedIds.size;
+  renderProducts(currentProducts, currentSupplierId);
+  if (selectedIds.size < before) toast(t("catalog_selected_hidden_note"), "info");
+}
+searchInput.addEventListener("input", () => { filters.query = searchInput.value; onFiltersChanged(); });
+searchInput.addEventListener("keydown", (e) => { if (e.key === "Escape" && searchInput.value) { searchInput.value = ""; filters.query = ""; onFiltersChanged(); } });
+searchClear.addEventListener("click", () => { searchInput.value = ""; filters.query = ""; onFiltersChanged(); searchInput.focus(); });
+categoryFilter.addEventListener("change", () => { filters.categoryId = categoryFilter.value; onFiltersChanged(); });
+statusFilter.addEventListener("change", () => { filters.status = statusFilter.value; onFiltersChanged(); });
+
+// Plutajući prikaz uz red artikla (hover; na telefonu ikonica „i")
+attachRowPopover(document.getElementById("products-body"), {
+  hoverSelector: "tr.row-link",
+  getContent: (row) => {
+    const p = currentProducts.find((x) => x.id === row.dataset.id);
+    if (!p) return "";
+    return productPopHtml(p, categories.find((c) => c.id === p.categoryId)?.name || "", isProductActive(p));
+  },
+});
 
 document.getElementById("product-form").addEventListener("submit", async (e) => {
   e.preventDefault();

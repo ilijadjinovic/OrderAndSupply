@@ -10,6 +10,13 @@ export function parseQty(q) {
 
 const norm = (s) => String(s ?? "").trim().toLocaleLowerCase("sr");
 
+// Ključ artikla u izveštajima: productId, pa šifra, pa naziv + jedinica mere (isti ključ kao u aggregateByItem)
+export function itemKey(it) {
+  const unit = String(it?.unit ?? "").trim();
+  const id = it?.productId || String(it?.code ?? "").trim() || String(it?.productName ?? "").trim();
+  return id ? `${norm(id)}|${norm(unit)}` : "";
+}
+
 // Po artiklima: ukupna naručena količina i broj narudžbina po artiklu.
 // Isti artikal u različitim jedinicama mere ostaje u odvojenim redovima
 // (količine u kg i kom se ne sabiraju). Artikal se prepoznaje po productId,
@@ -19,9 +26,8 @@ export function aggregateByItem(rows) {
   (rows || []).forEach((r) => {
     (r.items || []).forEach((it) => {
       const unit = String(it.unit ?? "").trim();
-      const id = it.productId || String(it.code ?? "").trim() || String(it.productName ?? "").trim();
-      if (!id) return;
-      const key = `${norm(id)}|${norm(unit)}`;
+      const key = itemKey(it);
+      if (!key) return;
       if (!map.has(key)) map.set(key, { key, code: "", name: "", unit, quantity: 0, perOrder: new Map() });
       const e = map.get(key);
       if (!e.code && it.code) e.code = String(it.code).trim();
@@ -80,3 +86,54 @@ export function groupItemsBySupplier(items) {
 export function fmtQty(n, locale = "sr-RS") {
   return (Number(n) || 0).toLocaleString(locale, { maximumFractionDigits: 3 });
 }
+
+// ---------------------------------------------------------------------------
+// Sažeci za plutajući prikaz redova izveštaja (čiste funkcije)
+// ---------------------------------------------------------------------------
+
+// Firestore Timestamp | Date | {seconds} → Date (ili null)
+export function toDate(ts) {
+  if (!ts) return null;
+  if (typeof ts.toDate === "function") return ts.toDate();
+  if (ts instanceof Date) return ts;
+  if (typeof ts.seconds === "number") return new Date(ts.seconds * 1000);
+  return null;
+}
+
+// Broj narudžbina po statusu (opadajuće) i datum poslednje narudžbine.
+// entries: [{ r }] — red agregacije (a.orders)
+export function summarizeOrders(entries) {
+  const counts = new Map();
+  let last = null;
+  (entries || []).forEach(({ r }) => {
+    counts.set(r.status || "—", (counts.get(r.status || "—") || 0) + 1);
+    const d = toDate(r.createdAt);
+    if (d && (!last || d > last)) last = d;
+  });
+  return {
+    count: (entries || []).length,
+    byStatus: [...counts.entries()].map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count || String(a.status).localeCompare(String(b.status))),
+    last,
+  };
+}
+
+// Prvih n po zbiru težina. pick(entry) → [{ key, name, weight = 1, unit }]
+export function topBy(entries, pick, n = 3) {
+  const map = new Map();
+  (entries || []).forEach((e) => (pick(e) || []).forEach(({ key, name, weight = 1, unit = "" }) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, { key, name: name || "—", unit, weight: 0 });
+    const m = map.get(key);
+    if ((!m.name || m.name === "—") && name) m.name = name;
+    m.weight += weight;
+  }));
+  return [...map.values()].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name, "sr")).slice(0, n);
+}
+
+// Pomoćni „pickeri" za topBy
+export const pickSuppliers = (e) => {
+  const seen = new Map();
+  (e.r.items || []).forEach((it) => { const k = it.supplierId || it.supplierName; if (k && !seen.has(k)) seen.set(k, { key: k, name: it.supplierName }); });
+  return [...seen.values()];                              // dobavljač se broji jednom po narudžbini
+};
+export const pickNarucilac = (e) => [{ key: e.r.createdByUid || e.r.createdByName, name: e.r.createdByName }];

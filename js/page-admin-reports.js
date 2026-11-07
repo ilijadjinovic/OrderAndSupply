@@ -13,6 +13,8 @@ import { generateOrdersReportPdf } from "./order-print.js";
 import { exportCsv, exportExcel, exportPdf } from "./import-export.js";
 import { escapeHtml, toast, formatDate, ROLES, statusLabel, ORDER_STATUS_ALL, badgeClassForStatus } from "./utils.js";
 import { getISO, setISO, initDatepickers } from "./datepicker.js";
+import { itemsInfoBtnHtml } from "./row-popover.js";
+import { attachReportPopovers } from "./report-popovers.js";
 
 await loadLang();
 
@@ -21,6 +23,7 @@ let ownerUid = null;    // naručilac vidi samo svoje narudžbine (zaključano n
 let fullDataset = [];   // narudžbine (sa items+purchases) unutar izabranog perioda, bez narucilac/isporucilac/dobavljac/status filtera
 let filteredRows = [];
 const expanded = new Set();   // otvoreni redovi po tabovima („tab:ključ") — ostaju otvoreni i posle promene filtera
+const suppliersById = new Map();   // za kontakt dobavljača u plutajućem prikazu
 const aggCache = {};          // tab -> poslednja agregacija (za otvaranje i izvoz reda)  // posle primene svih filtera — osnova za sve tabove
 
 requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], async (user, profile) => {
@@ -48,6 +51,7 @@ requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], async (user, profile) => {
     getIsporucioci(companyId).catch(() => []),
   ]);
 
+  suppliers.forEach((s) => suppliersById.set(s.id, s));
   document.getElementById("f-supplier").innerHTML += suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
   document.getElementById("f-narucilac").innerHTML += narucioci.map((u) => `<option value="${u.uid}">${escapeHtml(u.name)}</option>`).join("");
   document.getElementById("f-isporucilac").innerHTML += isporucioci.map((u) => `<option value="${u.uid}">${escapeHtml(u.name)}</option>`).join("");
@@ -149,8 +153,8 @@ function renderOrdersTab() {
   if (!filteredRows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="8">${t("no_orders_for_filters")}</td></tr>`; return; }
   const detailed = document.getElementById("f-detailed").checked;
   body.innerHTML = filteredRows.map((r) => `
-    <tr>
-      <td class="mono"><a href="./order-detail.html?order=${r.id}">${escapeHtml(r.orderNumber)}</a></td>
+    <tr class="rep-order-row" data-id="${r.id}">
+      <td class="mono"><a href="./order-detail.html?order=${r.id}">${escapeHtml(r.orderNumber)}</a>${detailed ? "" : itemsInfoBtnHtml()}</td>
       <td>${formatDate(r.createdAt)}</td>
       <td>${escapeHtml(r.createdByName || "—")}</td>
       <td>${escapeHtml(r.requestedByName || "—")}</td>
@@ -211,7 +215,7 @@ function renderAggTab(tab, bodyId, agg, colCount, cellsFn) {
   }).join("");
 }
 
-const nameAmountCells = (a) => `<td>${CHEV}${escapeHtml(a.name)}</td><td>${a.orderCount}</td><td><strong>${fmtAmount(a.total)}</strong></td>`;
+const nameAmountCells = (a) => `<td>${CHEV}${escapeHtml(a.name)}${itemsInfoBtnHtml()}</td><td>${a.orderCount}</td><td><strong>${fmtAmount(a.total)}</strong></td>`;
 
 // --------------------------------------------------------------- PO NARUČIOCIMA
 function renderNarucioci() { renderAggTab("narucioci", "narucioci-body", aggregateByNarucilac(filteredRows), 3, nameAmountCells); }
@@ -226,12 +230,21 @@ function renderSuppliersTab() { renderAggTab("suppliers", "suppliers-body-report
 function renderItemsTab() {
   const locale = currentLang === "en" ? "en-GB" : "sr-RS";
   renderAggTab("items", "items-body", aggregateByItem(filteredRows), 5, (a) => `
-      <td class="mono">${CHEV}${escapeHtml(a.code || "—")}</td>
+      <td class="mono">${CHEV}${escapeHtml(a.code || "—")}${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(a.name)}</td>
       <td>${escapeHtml(a.unit || "—")}</td>
       <td><strong>${fmtQty(a.quantity, locale)}</strong></td>
       <td>${a.orderCount}</td>`);
 }
+
+// Plutajući prikaz uz redove svih tabova (hover; na telefonu ikonica „i")
+attachReportPopovers({
+  getOrder: (id) => filteredRows.find((r) => r.id === id),
+  getAgg: (tab) => aggCache[tab],
+  getSupplier: (id) => suppliersById.get(id),
+  fmtAmount,
+  locale: () => (currentLang === "en" ? "en-GB" : "sr-RS"),
+});
 
 const TAB_BODY = { narucioci: "narucioci-body", isporucioci: "isporucioci-body", suppliers: "suppliers-body-report", items: "items-body" };
 const TAB_RENDER = { narucioci: renderNarucioci, isporucioci: renderIsporucioci, suppliers: renderSuppliersTab, items: renderItemsTab };

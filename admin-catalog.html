@@ -53,6 +53,19 @@
       </div>
 
       <div class="panel">
+        <div class="catalog-filter-bar" id="catalog-filter-bar">
+          <div class="catalog-search">
+            <input type="search" id="catalog-search" data-i18n-placeholder="catalog_search_placeholder" data-i18n-title="catalog_search_label" placeholder="Pretraži artikle (naziv, šifra, barkod)…" autocomplete="off" />
+            <button type="button" class="catalog-search-clear hidden" id="catalog-search-clear" data-i18n-title="catalog_search_clear" title="Obriši pretragu" aria-label="Obriši pretragu">×</button>
+          </div>
+          <select id="catalog-filter-category" data-i18n-title="category"></select>
+          <select id="catalog-filter-status" data-i18n-title="status">
+            <option value="" data-i18n="all_statuses">Svi statusi</option>
+            <option value="active" data-i18n="active">Aktivan</option>
+            <option value="passive" data-i18n="product_passive">Pasiviziran</option>
+          </select>
+          <span class="catalog-shown" id="catalog-shown" aria-live="polite"></span>
+        </div>
         <div class="table-wrap">
           <table class="data-table table-fixed">
             <colgroup>

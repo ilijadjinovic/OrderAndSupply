@@ -5,6 +5,8 @@ import { listenLocations, addLocation, deleteLocation } from "./locations.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
 import { coordsBadgeHtml, createGeoField, openCoordsEditor, geocodeMissing, showBatchResults } from "./geo-ui.js";
 import { updateLocation } from "./locations.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { locationPopHtml } from "./table-popovers.js";
 
 await loadLang();
 let companyId, actorName, currentRole, latestLocations = [];
@@ -21,8 +23,8 @@ function render(locations) {
   const body = document.getElementById("loc-body");
   if (!locations.length) { body.innerHTML = `<tr class="empty-row"><td colspan="4">${t("no_locations")}</td></tr>`; return; }
   body.innerHTML = locations.map((l) => `
-    <tr>
-      <td><strong>${escapeHtml(l.name)}</strong></td>
+    <tr data-id="${l.id}">
+      <td><strong>${escapeHtml(l.name)}</strong>${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(l.address || "—")}</td>
       <td>${coordsBadgeHtml(l)}</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-geo="${l.id}" title="${t("geo_adjust_btn")}">🎯</button> ${isAdmin ? `<button class="btn btn-sm btn-danger" data-id="${l.id}">${t("delete")}</button>` : ""}</td>
@@ -42,6 +44,12 @@ function render(locations) {
     });
   });
 }
+
+// Plutajući prikaz uz red lokacije: adresa, koordinate, tačnost
+attachRowPopover(document.getElementById("loc-body"), {
+  hoverSelector: "tr[data-id]",
+  getContent: (row) => { const l = latestLocations.find((x) => x.id === row.dataset.id); return l ? locationPopHtml(l) : ""; },
+});
 
 const locGeoField = createGeoField(document.getElementById("loc-geo-host"), { getAddress: () => document.getElementById("loc-address").value });
 

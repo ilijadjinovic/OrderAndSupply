@@ -5,6 +5,8 @@ import { listenSuppliers, addSupplier, updateSupplier, deleteSupplier, addSuppli
 import { coordsBadgeHtml, createGeoField, openCoordsEditor, geocodeMissing, showBatchResults } from "./geo-ui.js";
 import { getCompanySettings } from "./settings.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { supplierPopHtml } from "./table-popovers.js";
 
 await loadLang();
 let companyId, actorName, currentUid, currentRole, activeSupplierId, activeSupplierName;
@@ -43,8 +45,8 @@ function render(suppliers) {
   body.innerHTML = suppliers.map((s) => {
     const canEdit = isAdmin || s.createdBy === currentUid;
     return `
-    <tr class="row-link" data-id="${s.id}" title="${t("details_label")}">
-      <td><strong>${escapeHtml(s.name)}</strong></td>
+    <tr class="row-link" data-id="${s.id}">
+      <td><strong>${escapeHtml(s.name)}</strong>${itemsInfoBtnHtml()}</td>
       <td class="mono">${escapeHtml(s.pib || "—")}</td>
       <td>${escapeHtml(s.contact || "—")}</td>
       <td>${escapeHtml(s.phone || "—")}</td>
@@ -87,6 +89,24 @@ function render(suppliers) {
     });
   });
 }
+
+// Plutajući prikaz uz red dobavljača: kontakt + lokacije preuzimanja (jedno čitanje po dobavljaču, pamti se 20 s
+// da se izmene lokacija brzo vide)
+const LOC_TTL_MS = 20000;
+const locCache = new Map();   // supplierId -> { at, promise }
+function supplierLocations(id) {
+  const hit = locCache.get(id);
+  if (hit && Date.now() - hit.at < LOC_TTL_MS) return hit.promise;
+  const promise = getSupplierLocations(companyId, id).catch((err) => { console.error(err); locCache.delete(id); return []; });
+  locCache.set(id, { at: Date.now(), promise });
+  return promise;
+}
+const supplierOfRow = (row) => latestSuppliers.find((x) => x.id === row.dataset.id);
+attachRowPopover(document.getElementById("suppliers-body"), {
+  hoverSelector: "tr.row-link",
+  getLoading: (row) => { const s = supplierOfRow(row); return s ? supplierPopHtml(s, null) : ""; },
+  getContent: (row) => { const s = supplierOfRow(row); return s ? supplierLocations(s.id).then((locs) => supplierPopHtml(s, locs)) : ""; },
+});
 
 let activeEditId = null;
 const supplierModal = document.getElementById("supplier-modal");

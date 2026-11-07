@@ -24,6 +24,8 @@ import {
   ORDER_STATUS, statusLabel, ORDER_STATUS_FLOW, normalizeQuantity,
 } from "./utils.js";
 import { getISO, initDatepickers } from "./datepicker.js";
+import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
+import { orderItemPopHtml } from "./table-popovers.js";
 import { calcShortages, buildCarryOverDraft, finalizeCarryOver } from "./carry-over-logic.js";
 
 await loadLang();
@@ -242,6 +244,17 @@ function renderDeleteZone() {
 }
 
 // ---------------------------------------------------------------- ITEMS TABLE
+// Plutajući prikaz uz naziv artikla (hover; na telefonu ikonica „i"): traženo/kupljeno, lokacije, status, račun.
+// Samo nad ćelijom sa nazivom — ostale ćelije u izmeni sadrže polja za unos.
+attachRowPopover(document.getElementById("items-body"), {
+  hoverSelector: "tr[data-item-id] > td:nth-child(3)",
+  getContent: (row) => {
+    const it = items.find((x) => x.id === row.dataset.itemId);
+    if (!it) return "";
+    return orderItemPopHtml(it, purchases.find((p) => p.supplierId === it.supplierId), (n) => formatCurrency(n));
+  },
+});
+
 function renderItemsTable() {
   const body = document.getElementById("items-body");
   const canEdit = canEditOrder();
@@ -281,7 +294,7 @@ function renderItemsTable() {
     <tr data-item-id="${i.id}">
       <td class="col-num muted">${idx + 1}</td>
       <td class="mono">${escapeHtml(i.code || "—")}</td>
-      <td><strong>${escapeHtml(i.productName)}</strong></td>
+      <td><strong>${escapeHtml(i.productName)}</strong>${itemsInfoBtnHtml()}</td>
       <td>${escapeHtml(i.supplierName)}</td>
       <td>${canEdit && supplierLocsCache[i.supplierId]?.length
         ? `<select class="edit-item-pickup">${pickupOptionsHtml(i, supplierLocsCache[i.supplierId])}</select>`
