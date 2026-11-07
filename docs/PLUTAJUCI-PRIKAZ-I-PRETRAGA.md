@@ -10,6 +10,7 @@ Hover mišem otvara balon sa osnovnim sadržajem reda; na telefonu/tabletu (bez 
 | Izveštaji → Po isporučiocima | ceo red | isto + 3 najčešća naručioca |
 | Izveštaji → Po dobavljačima | ceo red | ukupno plaćeno, broj narudžbina, kontakt, 5 najtraženijih artikala tog dobavljača |
 | Izveštaji → Po artiklima | ceo red | šifra, ukupna količina, broj narudžbina, najčešći naručioci i dobavljači |
+| Izveštaji → raširen red (sva 4 taba) | broj narudžbenice u listi | isti balon kao na tabu „Po narudžbenicama": status, ko je tražio, dobavljači, artikli, plaćeno po dobavljaču |
 | Dobavljači | ceo red | PIB, MB, kontakt, email, adresa, radno vreme, napomena + lokacije preuzimanja (✅/⚠/❌) |
 | Katalog | ceo red | naziv, šifra, barkod, kategorija, JM, PDV, min. količina, status |
 | Lokacije za isporuku | ceo red | adresa, koordinate, tačnost, datum ažuriranja |
@@ -19,7 +20,7 @@ Hover mišem otvara balon sa osnovnim sadržajem reda; na telefonu/tabletu (bez 
 | Detalj narudžbine → Stavke | ćelija sa nazivom | šifra, dobavljač, lokacije, traženo/kupljeno, status, zamena, napomena, račun |
 | Kontrolne table | prva ćelija (broj) | kao do sada |
 
-Redovi koji su već otvoreni (klik u izveštajima) nemaju balon; iznad dugmadi i polja u redu balon se ne prikazuje. Izveštaji i većina tabela ne prave nova čitanja; jedini izuzetak su lokacije dobavljača (jedno čitanje po dobavljaču, pamti se 20 s) i stavke narudžbine na kontrolnim tablama (kao i ranije).
+Red agregacije koji je već otvoren (klik u izveštajima) nema svoj balon, ali narudžbenice u njegovoj listi imaju; iznad dugmadi i polja u redu balon se ne prikazuje. Izveštaji i većina tabela ne prave nova čitanja; jedini izuzetak su lokacije dobavljača (jedno čitanje po dobavljaču, pamti se 20 s) i stavke narudžbine na kontrolnim tablama (kao i ranije).
 
 Kod: `js/row-popover.js` (mehanika), `js/table-popovers.js` (sadržaj), `js/report-popovers.js`, `js/order-items-popover.js`. Nova tabela: `attachRowPopover(tbody, { hoverSelector, getContent })` + `itemsInfoBtnHtml()` u ćeliji za telefon.
 

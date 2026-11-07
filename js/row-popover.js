@@ -76,8 +76,12 @@ export const popEmpty = (text) => `<div class="items-pop-empty">${escapeHtml(tex
 // ---------------------------------------------------------------- priključivanje na tabelu
 export function attachRowPopover(body, opts) {
   const { hoverSelector, getContent, getLoading = null, skip = null, ignore = DEFAULT_IGNORE } = opts;
-  if (!body || body.dataset.rowPop) return;
-  body.dataset.rowPop = "1";
+  // Na istom telu tabele može biti više pravila (npr. red agregacije i ugnežđeni redovi narudžbina u raširenom redu);
+  // isto pravilo se ne priključuje dvaput (tabele se ponovo iscrtavaju, a priključivanje se poziva iznova).
+  if (!body) return;
+  body._rowPops = body._rowPops || new Set();
+  if (body._rowPops.has(hoverSelector)) return;
+  body._rowPops.add(hoverSelector);
   const keyOf = opts.getKey || ((row) => row.dataset.id || row.dataset.key || row.dataset.itemId || "");
   let timer = null, hideTimer = null, current = null, token = 0;   // current = { anchor, row, key }
 
@@ -145,10 +149,13 @@ export function attachRowPopover(body, opts) {
   body.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-items-btn]");
     if (!btn) { hide(); return; }
-    e.stopPropagation();
     const row = btn.closest("tr");
     if (!row) return;
-    const anchor = row.matches(hoverSelector) ? row : (btn.closest("td") || row);
+    // Ikonica pripada ovom pravilu samo ako je u redu / ćeliji koju pravilo prati (inače je obrađuje drugo pravilo)
+    const cell = btn.closest("td");
+    const anchor = row.matches(hoverSelector) ? row : (cell && cell.matches(hoverSelector) ? cell : null);
+    if (!anchor) return;
+    e.stopPropagation();
     if (current?.anchor === anchor && pop?.classList.contains("show")) { hide(); return; }
     clearTimeout(timer); clearTimeout(hideTimer);
     current = { anchor, row, key: keyOf(row) };

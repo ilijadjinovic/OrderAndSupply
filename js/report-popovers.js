@@ -16,22 +16,26 @@ export function attachReportPopovers(ctx) {
   const q = (n) => fmtQty(n, locale());
   const skipOpen = (row) => row.getAttribute("aria-expanded") === "true";   // otvoren red već prikazuje svoju listu
 
+  // Balon jedne narudžbine (broj + status, ko je tražio, dobavljači, artikli, plaćeno po dobavljaču) —
+  // isti na tabu „Po narudžbenicama" i u listi narudžbenica unutar raširenog reda ostalih tabova
+  const orderContent = (id) => {
+    const r = getOrder(id);
+    if (!r) return "";
+    // Plaćeno po dobavljaču (samo nabavke sa unetim iznosom)
+    const paid = new Map();
+    (r.purchases || []).forEach((p) => { if (Number(p.paidAmount)) paid.set(p.supplierName || "—", (paid.get(p.supplierName || "—") || 0) + Number(p.paidAmount)); });
+    const rows = [...paid.entries()].map(([name, amount]) => [name, fmtAmount(amount)]);
+    if (paid.size > 1) rows.push([t("order_total_label_caps"), fmtAmount(r.total)]);
+    const footHtml = rows.length ? popSection(t("report_pop_paid")) + popList(rows, { max: 6 }) : "";
+    return orderPopoverHtml(r, r.items || [], { withStatus: true, footHtml });
+  };
+
   // ---- Po narudžbenicama
   const ordersBody = document.getElementById("orders-body");
   attachRowPopover(ordersBody, {
     hoverSelector: "tr.rep-order-row > td:first-child",
     skip: () => document.getElementById("f-detailed").checked,   // „Detaljno": detalji su već ispod reda
-    getContent: (row) => {
-      const r = getOrder(row.dataset.id);
-      if (!r) return "";
-      // Plaćeno po dobavljaču (samo nabavke sa unetim iznosom)
-      const paid = new Map();
-      (r.purchases || []).forEach((p) => { if (Number(p.paidAmount)) paid.set(p.supplierName || "—", (paid.get(p.supplierName || "—") || 0) + Number(p.paidAmount)); });
-      const rows = [...paid.entries()].map(([name, amount]) => [name, fmtAmount(amount)]);
-      if (paid.size > 1) rows.push([t("order_total_label_caps"), fmtAmount(r.total)]);
-      const footHtml = rows.length ? popSection(t("report_pop_paid")) + popList(rows, { max: 6 }) : "";
-      return orderPopoverHtml(r, r.items || [], { withStatus: true, footHtml });
-    },
+    getContent: (row) => orderContent(row.dataset.id),
   });
 
   // ---- Zajednički delovi agregatnih balona
@@ -82,13 +86,19 @@ export function attachReportPopovers(ctx) {
 
   const bodyIds = { narucioci: "narucioci-body", isporucioci: "isporucioci-body", suppliers: "suppliers-body-report", items: "items-body" };
   Object.entries(bodyIds).forEach(([tab, id]) => {
-    attachRowPopover(document.getElementById(id), {
+    const body = document.getElementById(id);
+    attachRowPopover(body, {
       hoverSelector: "tr.rep-drill-toggle",
       skip: skipOpen,
       getContent: (row) => {
         const a = (getAgg(tab) || []).find((x) => x.key === row.dataset.key);
         return a ? builders[tab](a) : "";
       },
+    });
+    // Raširen red: narudžbenice u njegovoj listi imaju isti balon kao na tabu „Po narudžbenicama" (hover na broj)
+    attachRowPopover(body, {
+      hoverSelector: "tr.rep-drill-order > td:first-child",
+      getContent: (row) => orderContent(row.dataset.id),
     });
   });
 }

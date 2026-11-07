@@ -169,7 +169,7 @@ function renderOrdersTab() {
 
 // --------------------------------------------------------------- DRILL-DOWN (klik na red → lista narudžbenica)
 const COL = {
-  number: { head: () => t("export_col_number"), html: (o) => `<a class="mono" href="./order-detail.html?order=${o.r.id}">${escapeHtml(o.r.orderNumber)}</a>`, text: (o) => o.r.orderNumber },
+  number: { head: () => t("export_col_number"), html: (o) => `<a class="mono" href="./order-detail.html?order=${o.r.id}">${escapeHtml(o.r.orderNumber)}</a>${itemsInfoBtnHtml()}`, text: (o) => o.r.orderNumber },
   date: { head: () => t("export_col_date"), html: (o) => formatDate(o.r.createdAt), text: (o) => formatDate(o.r.createdAt) },
   narucilac: { head: () => t("role_narucilac"), html: (o) => escapeHtml(o.r.createdByName || "—"), text: (o) => o.r.createdByName || "—" },
   isporucilac: { head: () => t("role_isporucilac"), html: (o) => escapeHtml(o.r.assignedToName || t("not_assigned")), text: (o) => o.r.assignedToName || t("not_assigned") },
@@ -198,7 +198,7 @@ function drillDetailHtml(tab, a) {
     </div>
     <table class="data-table rep-detail-table">
       <thead><tr>${cols.map((c) => `<th>${c.head()}</th>`).join("")}</tr></thead>
-      <tbody>${a.orders.map((o) => `<tr>${cols.map((c) => `<td>${c.html(o, a)}</td>`).join("")}</tr>`).join("")}</tbody>
+      <tbody>${a.orders.map((o) => `<tr class="rep-drill-order" data-id="${escapeHtml(o.r.id)}">${cols.map((c) => `<td>${c.html(o, a)}</td>`).join("")}</tr>`).join("")}</tbody>
     </table>`;
 }
 
