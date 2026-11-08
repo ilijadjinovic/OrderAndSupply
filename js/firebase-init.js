@@ -17,9 +17,24 @@ import {
   getStorage, ref, uploadBytes, getDownloadURL, deleteObject,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-import { firebaseConfig } from "./firebase-config.js";
+// Namespace import: opcioni "appCheckSiteKey" ne mora da postoji u firebase-config.js
+import * as cfg from "./firebase-config.js";
+const firebaseConfig = cfg.firebaseConfig;
 
 export const app = initializeApp(firebaseConfig);
+
+// App Check (opciono, besplatno): ako u firebase-config.js dodaš
+//   export const appCheckSiteKey = "TVOJ_RECAPTCHA_V3_SITE_KEY";
+// svaki zahtev ka Firestore/Storage nosi token koji dokazuje da dolazi iz tvoje
+// aplikacije (vidi docs/MASTER-ADMIN-I-BEZBEDNOST.md). Bez ključa se ništa ne menja.
+if (cfg.appCheckSiteKey) {
+  try {
+    const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check.js");
+    initializeAppCheck(app, { provider: new ReCaptchaV3Provider(cfg.appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+  } catch (e) {
+    console.error("App Check nije inicijalizovan:", e);
+  }
+}
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);

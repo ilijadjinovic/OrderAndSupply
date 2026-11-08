@@ -4,30 +4,83 @@ rules_version = '2';
 // FIRESTORE RULES — Sistem za naručivanje i nabavku
 //
 // Napomena za produkciju: ova pravila koriste "get()" pozive da bi proverila
-// ulogu prijavljenog korisnika (users/{uid}.role). Za veće sisteme je
-// preporučljivo dodatno uvesti Firebase Custom Claims (preko Cloud Function-a
-// pri kreiranju korisnika) radi bržih i jeftinijih provera prava pristupa.
+// ulogu prijavljenog korisnika (users/{uid}.role). Pošto se radi na besplatnom
+// (Spark) planu bez Cloud Functions, uloga se NE čuva u custom claim-u, već u
+// users/{uid} dokumentu — zato su pravila ispod pažljivo napisana tako da
+// NIKO preko klijentskog SDK-a ne može sebi (ili drugome) da upiše ulogu
+// "master_admin". Master admin se postavlja ISKLJUČIVO ručno u Firebase
+// konzoli (users/{uid}.role = "master_admin"), koja zaobilazi ova pravila.
 // ============================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --------------------------------------------------------------------
+    // Pomoćne funkcije
+    // --------------------------------------------------------------------
     function isSignedIn() { return request.auth != null; }
     function myProfile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
-    function myCompanyId() { return myProfile().companyId; }
-    function myRole() { return myProfile().role; }
-    function isMasterAdmin() { return isSignedIn() && myRole() == 'master_admin'; }
-    function isCompanyMember(companyId) { return isSignedIn() && myCompanyId() == companyId && myProfile().active != false; }
+    function myCompanyId() { return myProfile().get('companyId', null); }
+    function myRole() { return myProfile().get('role', null); }
+    function companyDoc(companyId) { return get(/databases/$(database)/documents/companies/$(companyId)).data; }
+
+    // Firma je upotrebljiva samo ako nije blokirana ni obrisana (arhivirana).
+    function companyUsable(companyId) {
+      return !(companyDoc(companyId).get('status', 'active') in ['blocked', 'deleted']);
+    }
+    // Firma je "obrisana" (arhivirana) ILI njen dokument više ne postoji —
+    // tek tada master admin sme da trajno briše njene podatke (purge).
+    function companyIsDeleted(companyId) {
+      return !exists(/databases/$(database)/documents/companies/$(companyId))
+             || companyDoc(companyId).get('status', 'active') == 'deleted';
+    }
+
+    function isMasterAdmin() {
+      return isSignedIn() && myRole() == 'master_admin' && myProfile().get('active', true) != false;
+    }
+    // Pripada firmi i nalog je aktivan — bez provere statusa firme
+    // (da bi korisnik blokirane firme mogao da pročita status i vidi poruku).
+    function isOwnCompany(companyId) {
+      return isSignedIn() && myCompanyId() == companyId && myProfile().get('active', true) != false;
+    }
+    // Pun pristup poslovnim podacima firme: samo dok firma NIJE blokirana/obrisana.
+    function isCompanyMember(companyId) { return isOwnCompany(companyId) && companyUsable(companyId); }
     function isAdminOf(companyId) { return isCompanyMember(companyId) && myRole() == 'admin'; }
     function isNarucilacOf(companyId) { return isCompanyMember(companyId) && myRole() == 'narucilac'; }
     function isIsporucilacOf(companyId) { return isCompanyMember(companyId) && myRole() == 'isporucilac'; }
+
+    // Uloge koje klijent sme da dodeli. "master_admin" NIKAD nije na listi.
+    function assignableRole(role) { return role in ['admin', 'narucilac', 'isporucilac']; }
+
+    // Pomoćne za provere "koja su polja izmenjena" pri update-u.
+    function changedKeys() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
     // Izmena SAMO polja koordinata lokacije (ruta/mapa): lat, lng, geoSource, geoQuality, geoUpdatedAt.
     // Ostala polja lokacije i brisanje ostaju samo za admina.
     function onlyGeoFieldsChanged() {
-      return request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['lat', 'lng', 'geoSource', 'geoQuality', 'geoUpdatedAt']);
+      return changedKeys().hasOnly(['lat', 'lng', 'geoSource', 'geoQuality', 'geoUpdatedAt']);
     }
     function canEditGeo(companyId) { return isAdminOf(companyId) || isNarucilacOf(companyId) || isIsporucilacOf(companyId); }
+
+    // Korisnik sme sam da menja SAMO svoje ime i vreme poslednje aktivnosti
+    // (lastSeenAt mora biti trenutak zapisa — ne može se lažirati).
+    function selfProfileEditOk() {
+      return changedKeys().hasOnly(['name', 'lastSeenAt'])
+        && (!changedKeys().hasAny(['lastSeenAt']) || request.resource.data.lastSeenAt == request.time);
+    }
+
+    // Polja firme koja admin firme NE sme da menja (status, pretplata, razlog blokade,
+    // oznake brisanja, identitet firme). Menja ih samo master admin.
+    function companyProtectedKeys() {
+      return ['status', 'subscription', 'blockReason', 'blockedAt', 'blockedBy',
+              'deletedAt', 'deletedBy', 'restoredAt', 'masterNote',
+              'createdByUid', 'companyId', 'createdAt'];
+    }
+    // Polja firme koja sme da menja master admin.
+    function companyMasterKeys() {
+      return ['status', 'subscription', 'blockReason', 'blockedAt', 'blockedBy',
+              'deletedAt', 'deletedBy', 'restoredAt', 'masterNote'];
+    }
 
     // Brisanje CELE narudžbine (ne samo odbijanje): admin sme uvek i bilo koju;
     // naručilac sme SAMO svoju, i SAMO dok nije prihvaćena od isporučioca
@@ -41,36 +94,87 @@ service cloud.firestore {
             && o.status in ['kreirana', 'ceka_prihvatanje']);
     }
 
-    // --- Platformska podešavanja (Master Admin) ---
+    // --------------------------------------------------------------------
+    // Platforma (Master Admin)
+    // --------------------------------------------------------------------
     match /platform/{docId} {
       allow read: if isSignedIn();
       allow write: if isMasterAdmin();
     }
 
-    // --- Firme ---
+    // Dnevnik akcija master admina (blokiranje, brisanje, uvid...) — nepromenljiv:
+    // upis dozvoljen samo master adminu i samo pod njegovim uid-om, bez izmene i brisanja.
+    match /platformAuditLogs/{logId} {
+      allow read: if isMasterAdmin();
+      allow create: if isMasterAdmin()
+                    && request.resource.data.actorUid == request.auth.uid
+                    && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // --------------------------------------------------------------------
+    // Firme
+    // --------------------------------------------------------------------
     match /companies/{companyId} {
-      allow read: if isMasterAdmin() || isCompanyMember(companyId);
-      allow create: if isSignedIn(); // registracija nove firme (Poglavlje 2.2)
-      allow update: if isMasterAdmin() || isAdminOf(companyId);
-      allow delete: if isMasterAdmin();
+      // Master admin čita sve firme; korisnik čita SVOJU firmu čak i kad je blokirana
+      // (klijent tako može da prikaže poruku "firma je blokirana").
+      allow read: if isMasterAdmin() || isOwnCompany(companyId);
+
+      // Registracija nove firme (Poglavlje 2.2): korisnik koji još NEMA profil sme da
+      // napravi firmu u kojoj je on kreator; firma uvek nastaje kao aktivna i bez
+      // polja koja pripadaju master adminu.
+      allow create: if isSignedIn()
+                    && !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                    && request.resource.data.createdByUid == request.auth.uid
+                    && request.resource.data.companyId == companyId
+                    && request.resource.data.status == 'active'
+                    && !request.resource.data.keys().hasAny(['subscription', 'blockReason', 'blockedAt', 'blockedBy',
+                                                             'deletedAt', 'deletedBy', 'restoredAt', 'masterNote']);
+
+      // Master admin: samo status/pretplata/oznake; admin firme: sve OSIM zaštićenih polja.
+      allow update: if (isMasterAdmin()
+                        && changedKeys().hasOnly(companyMasterKeys())
+                        && request.resource.data.get('status', 'active') in ['active', 'blocked', 'deleted'])
+                    || (isAdminOf(companyId) && !changedKeys().hasAny(companyProtectedKeys()));
+
+      // Trajno brisanje dokumenta firme: samo master admin i samo za već obrisanu (arhiviranu) firmu.
+      allow delete: if isMasterAdmin() && resource.data.get('status', 'active') == 'deleted';
+
+      // Master admin sme da trajno obriše SVE podatke firme (purge), ali samo kad je firma
+      // prethodno označena kao obrisana. Važi za sve podkolekcije na bilo kojoj dubini.
+      match /{purgeDoc=**} {
+        allow delete: if isMasterAdmin() && companyIsDeleted(companyId);
+      }
 
       // --- Korisnički indeks unutar firme (za listanje) ---
-      // Naručilac sme da kreira SAMO isporučilac naloge (bira se u formi); izmenu/brisanje/deaktivaciju radi admin.
       match /usersIndex/{uid} {
         allow read: if isCompanyMember(companyId);
-        allow create: if isAdminOf(companyId) || isMasterAdmin()
-                       || (isNarucilacOf(companyId) && request.resource.data.role == 'isporucilac');
-        // Admin/master admin mogu da menjaju sve; korisnik sme da menja SAMO svoje "name"
-        // (koristi se u Profil modalu — Poglavlje "Profil info").
-        allow update: if isAdminOf(companyId) || isMasterAdmin()
-                       || (isSignedIn() && request.auth.uid == uid
-                           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']));
-        allow delete: if isAdminOf(companyId) || isMasterAdmin();
+
+        allow create:
+          // admin firme: bilo koja dozvoljena uloga (nikad master_admin)
+          if (isAdminOf(companyId) && assignableRole(request.resource.data.role) && request.resource.data.uid == uid)
+          // naručilac sme da kreira SAMO isporučilac naloge
+          || (isNarucilacOf(companyId) && request.resource.data.role == 'isporucilac' && request.resource.data.uid == uid)
+          // registracija nove firme: admin upisuje sebe u istoj grupi (batch) u kojoj nastaje firma
+          || (isSignedIn() && request.auth.uid == uid
+              && request.resource.data.role == 'admin' && request.resource.data.uid == uid
+              && !exists(/databases/$(database)/documents/companies/$(companyId))
+              && getAfter(/databases/$(database)/documents/companies/$(companyId)).data.createdByUid == request.auth.uid);
+
+        allow update:
+          // admin firme: bez promene uloge u master_admin i bez promene uid-a
+          if (isAdminOf(companyId) && assignableRole(request.resource.data.role) && request.resource.data.get('uid', null) == resource.data.get('uid', null))
+          // master admin: samo aktivacija/deaktivacija naloga
+          || (isMasterAdmin() && changedKeys().hasOnly(['active']))
+          // korisnik: samo svoje ime i vreme poslednje aktivnosti
+          || (isSignedIn() && request.auth.uid == uid && selfProfileEditOk());
+
+        allow delete: if isAdminOf(companyId);
       }
 
       // --- Lokacije firme (koriste se i kao adrese za isporuku pri kreiranju narudžbine) ---
       match /locations/{locId} {
-        allow read: if isCompanyMember(companyId);
+        allow read: if isCompanyMember(companyId) || isMasterAdmin();
         allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
         allow update: if isAdminOf(companyId) || (canEditGeo(companyId) && onlyGeoFieldsChanged());
         allow delete: if isAdminOf(companyId);
@@ -85,7 +189,7 @@ service cloud.firestore {
 
       // --- Dobavljači + podkolekcije (lokacije, proizvodi) ---
       match /suppliers/{supplierId} {
-        allow read: if isCompanyMember(companyId);
+        allow read: if isCompanyMember(companyId) || isMasterAdmin();
         // Naručilac sme da doda novog dobavljača i da menja onaj koji je sam kreirao; briše samo admin.
         allow create: if isAdminOf(companyId) || isNarucilacOf(companyId);
         allow update: if isAdminOf(companyId) || (isNarucilacOf(companyId) && resource.data.createdBy == request.auth.uid);
@@ -124,8 +228,13 @@ service cloud.firestore {
       }
 
       // --- Narudžbine + sve podkolekcije ---
+      // Napomena: svaka od tri uloge (admin, naručilac, isporučilac) legitimno menja
+      // stavke/nabavke/reklamacije narudžbine kroz svoj deo toka, pa se pisanje ovde
+      // ne sužava po ulozi; granica je članstvo u (nebllokiranoj) firmi.
       match /orders/{orderId} {
-        allow read: if isCompanyMember(companyId);
+        // Master admin čita samo dokument narudžbine (status, datumi, imena) — za statistiku;
+        // stavke, nabavke, poruke i prilozi ostaju nedostupni.
+        allow read: if isCompanyMember(companyId) || isMasterAdmin();
         allow create: if isNarucilacOf(companyId);
         allow update: if isAdminOf(companyId) || isNarucilacOf(companyId) || isIsporucilacOf(companyId);
         allow delete: if canDeleteOrder(companyId, orderId);
@@ -167,32 +276,64 @@ service cloud.firestore {
         allow update: if isCompanyMember(companyId) && resource.data.toUid == request.auth.uid;
       }
 
-      // --- Audit log — upis dozvoljen svima u firmi, brisanje nikom ---
+      // --- Audit log — upis dozvoljen članovima firme (pod sopstvenim uid-om i sa
+      //     serverskim vremenom, pa se ne može lažirati ni unazad datirati),
+      //     izmena i brisanje nikom (osim purge-a obrisane firme gore) ---
       match /auditLogs/{logId} {
         allow read: if isAdminOf(companyId) || isMasterAdmin();
-        allow create: if isCompanyMember(companyId);
+        allow create: if isCompanyMember(companyId)
+                      && (request.resource.data.get('actorUid', null) == null
+                          || request.resource.data.actorUid == request.auth.uid)
+                      && request.resource.data.createdAt == request.time;
       }
     }
 
-    // --- Korisnici (top-level, keyed by Firebase Auth uid) ---
-    // Naručilac sme da kreira SAMO isporučilac naloge (role u novom dokumentu mora biti 'isporucilac').
+    // --------------------------------------------------------------------
+    // Korisnici (top-level, keyed by Firebase Auth uid)
+    // --------------------------------------------------------------------
     match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || isMasterAdmin() || isAdminOf(resource.data.companyId));
+      allow read: if isSignedIn() && (request.auth.uid == uid || isMasterAdmin()
+                                      || isAdminOf(resource.data.get('companyId', null)));
+
       allow create: if isSignedIn() && (
-        request.auth.uid == uid
-        || isAdminOf(request.resource.data.companyId)
-        || (isNarucilacOf(request.resource.data.companyId) && request.resource.data.role == 'isporucilac')
+        // 1) registracija nove firme: korisnik upisuje SEBE kao admina firme koja nastaje
+        //    u istoj grupi (batch) i čiji je on kreator; firma ne sme već da postoji
+        (request.auth.uid == uid
+          && request.resource.data.role == 'admin'
+          && request.resource.data.uid == uid
+          && request.resource.data.get('active', true) == true
+          && !exists(/databases/$(database)/documents/companies/$(request.resource.data.companyId))
+          && getAfter(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.createdByUid == request.auth.uid)
+        // 2) admin firme kreira zaposlenog (nikad master_admin)
+        || (isAdminOf(request.resource.data.companyId)
+            && assignableRole(request.resource.data.role)
+            && request.resource.data.uid == uid)
+        // 3) naručilac sme da kreira SAMO isporučilac naloge
+        || (isNarucilacOf(request.resource.data.companyId)
+            && request.resource.data.role == 'isporucilac'
+            && request.resource.data.uid == uid)
       );
-      // Admin firme sme da menja bilo koje polje svojih zaposlenih; sam korisnik sme
-      // da menja SAMO svoje "name" (Profil modal). Ovo sprečava da korisnik sam sebi
-      // promeni ulogu/firmu/status preko klijentskog SDK-a. (Master admin ovde nema
-      // posebna prava — nema svoju firmu — isto kao i pre ove izmene.)
+
+      // Admin firme sme da menja zaposlene SVOJE firme, ali ne sme da menja firmu, uid ni da
+      // dodeli ulogu master_admin. Korisnik sme da menja samo svoje ime i lastSeenAt.
+      // Master admin sme samo da aktivira/deaktivira tuđ nalog.
       allow update: if isSignedIn() && (
-        isAdminOf(resource.data.companyId)
-        || (request.auth.uid == uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']))
+        (isAdminOf(resource.data.get('companyId', null))
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.get('uid', null) == resource.data.get('uid', null)
+          && assignableRole(request.resource.data.role))
+        || (request.auth.uid == uid && selfProfileEditOk())
+        || (isMasterAdmin() && request.auth.uid != uid
+            && resource.data.get('role', '') != 'master_admin'
+            && changedKeys().hasOnly(['active']))
       );
-      allow delete: if isMasterAdmin();
+
+      // Brisanje korisnika: samo master admin, samo za korisnike obrisane firme (purge),
+      // nikad za drugog master admina.
+      allow delete: if isMasterAdmin()
+                    && resource.data.get('role', '') != 'master_admin'
+                    && resource.data.get('companyId', null) != null
+                    && companyIsDeleted(resource.data.companyId);
     }
   }
 }

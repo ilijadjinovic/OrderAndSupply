@@ -51,9 +51,11 @@ ili upload na Firebase Hosting / Netlify / Vercel.
    ulozi i statusu).
 6. Naručilac potvrđuje prijem robe ili otvara reklamaciju.
 
-Master Admin nalog (uvid u sve firme na platformi) trenutno se mora ručno
-postaviti: u Firestore konzoli otvori `users/{uid}` dokument željenog korisnika
-i promeni polje `role` u `master_admin`.
+Master Admin nalog (uvid u sve firme na platformi) postavlja se ISKLJUČIVO ručno:
+u Firestore konzoli otvori `users/{uid}` dokument željenog korisnika i promeni
+polje `role` u `master_admin` (pravila baze ne dozvoljavaju da to uradi klijent).
+Šta master admin vidi i može — pregled firme, korisnika, statistike, blokiranje,
+arhiviranje i trajno brisanje — opisano je u `docs/MASTER-ADMIN-I-BEZBEDNOST.md`.
 
 ## 3.1 Novododate funkcionalnosti
 
@@ -108,7 +110,8 @@ i promeni polje `role` u `master_admin`.
 nabavka-sistem/
 ├── index.html                    Prijava
 ├── register-company.html         Registracija firme + Admin naloga
-├── master-admin.html             Master Admin — sve firme na platformi
+├── master-admin.html             Master Admin — sve firme na platformi (statistika, blokiranje, brisanje)
+├── master-company.html           Master Admin — detalji firme (pregled, korisnici, statistika, dnevnik, pretplata)
 ├── admin-dashboard.html          Dashboard Admina firme
 ├── admin-users.html              Korisnici i uloge
 ├── admin-locations.html          Lokacije firme

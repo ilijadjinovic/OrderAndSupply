@@ -19,18 +19,59 @@
         <div class="eyebrow" data-i18n="role_master_admin">Master Admin</div>
         <h1 data-i18n="companies_on_platform_title">Firme na platformi</h1>
       </div>
+      <button type="button" class="btn btn-outline" id="refresh-btn" data-i18n="master_refresh_btn">Osveži</button>
+    </div>
+
+    <div class="panel hidden" id="global-error" style="border-left:4px solid var(--accent-red);">
+      <strong data-i18n="master_load_error_title">Deo podataka nije učitan.</strong>
+      <p class="muted" id="global-error-text" style="margin:6px 0 0;"></p>
     </div>
 
     <div class="stat-grid" id="global-stats"></div>
 
     <div class="panel">
-      <div class="panel-head"><h2 data-i18n="all_registered_companies_title">Sve registrovane firme</h2></div>
+      <div class="panel-head">
+        <h2 data-i18n="all_registered_companies_title">Sve registrovane firme</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <input type="text" id="company-search" data-i18n-placeholder="master_search_ph" placeholder="Pretraga: naziv, PIB, email…" style="min-width:220px;" />
+          <select id="status-filter">
+            <option value="all" data-i18n="master_filter_all">Sve</option>
+            <option value="active" data-i18n="active">Aktivan</option>
+            <option value="blocked" data-i18n="blocked">Blokirana</option>
+            <option value="deleted" data-i18n="company_status_deleted">Obrisana</option>
+          </select>
+          <select id="company-sort">
+            <option value="created_desc" data-i18n="master_sort_newest">Najnovije prvo</option>
+            <option value="created_asc" data-i18n="master_sort_oldest">Najstarije prvo</option>
+            <option value="name" data-i18n="master_sort_name">Po nazivu</option>
+            <option value="orders" data-i18n="master_sort_orders">Po broju narudžbina</option>
+            <option value="users" data-i18n="master_sort_users">Po broju korisnika</option>
+            <option value="activity" data-i18n="master_sort_activity">Po poslednjoj aktivnosti</option>
+          </select>
+        </div>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th data-i18n="name">Naziv</th><th data-i18n="pib_label">PIB</th><th>Email</th><th data-i18n="status">Status</th><th data-i18n="registered_label">Registrovana</th><th></th></tr></thead>
-          <tbody id="companies-body"><tr class="empty-row"><td colspan="6" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
+          <thead><tr>
+            <th data-i18n="name">Naziv</th>
+            <th data-i18n="pib_label">PIB</th>
+            <th>Email</th>
+            <th data-i18n="status">Status</th>
+            <th data-i18n="master_col_users">Korisnika</th>
+            <th data-i18n="master_col_orders">Narudžbina (30 d)</th>
+            <th data-i18n="master_col_activity">Poslednja aktivnost</th>
+            <th data-i18n="registered_label">Registrovana</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="companies-body"><tr class="empty-row"><td colspan="9" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
+    </div>
+
+    <div class="panel hidden" id="purge-result">
+      <div class="panel-head"><h2 data-i18n="purge_result_title">Trajno brisanje firme</h2></div>
+      <p id="purge-progress" class="muted"></p>
+      <div id="purge-emails"></div>
     </div>
 
     <div class="panel">
@@ -39,6 +80,16 @@
         <table class="data-table">
           <thead><tr><th data-i18n="time_label">Vreme</th><th data-i18n="action_label">Akcija</th><th data-i18n="who_label">Ko</th><th data-i18n="details_label">Detalji</th></tr></thead>
           <tbody id="audit-body"><tr class="empty-row"><td colspan="4" data-i18n="select_company_hint">Izaberite firmu iz tabele iznad.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2 data-i18n="platform_log_title">Dnevnik master admina</h2><span class="muted" data-i18n="platform_log_hint">Blokiranja, brisanja, uvidi u firme i druge akcije na nivou platforme</span></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th data-i18n="time_label">Vreme</th><th data-i18n="action_label">Akcija</th><th data-i18n="master_col_company">Firma</th><th data-i18n="who_label">Ko</th><th data-i18n="details_label">Detalji</th></tr></thead>
+          <tbody id="platform-log-body"><tr class="empty-row"><td colspan="5" data-i18n="loading_ellipsis">Učitavanje...</td></tr></tbody>
         </table>
       </div>
     </div>

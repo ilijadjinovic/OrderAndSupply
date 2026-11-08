@@ -77,9 +77,13 @@ export function userPopHtml(u) {
 
 // ---- Firma (master admin)
 export function companyPopHtml(c) {
-  const blocked = c.status === "blocked";
-  return popHead(c.name, { badgeHtml: badge(blocked ? "badge-red" : "badge-teal", blocked ? t("blocked") : t("active")) })
-    + popKv([[t("pib_label"), c.pib], [t("company_id_label"), c.maticniBroj], [t("email"), c.email], [t("address_label"), c.address], [t("registered_label"), c.createdAt ? formatDate(c.createdAt) : ""]]);
+  const st = c.status || "active";
+  const cls = st === "blocked" ? "badge-red" : st === "deleted" ? "badge-gray" : "badge-teal";
+  const label = st === "blocked" ? t("blocked") : st === "deleted" ? t("company_status_deleted") : t("active");
+  return popHead(c.name, { badgeHtml: badge(cls, label) })
+    + popKv([[t("pib_label"), c.pib], [t("company_id_label"), c.mb || c.maticniBroj], [t("email"), c.email], [t("phone_label"), c.phone], [t("address_label"), c.address],
+      [t("registered_label"), c.createdAt ? formatDate(c.createdAt) : ""],
+      ...(st === "blocked" && c.blockReason ? [[t("master_block_reason"), c.blockReason]] : [])]);
 }
 
 // ---- Zapis dnevnika (master admin): ceo zapis, uključujući pun tekst detalja

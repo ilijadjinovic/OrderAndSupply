@@ -3,14 +3,42 @@ rules_version = '2';
 // ============================================================================
 // STORAGE RULES — prilozi (fiskalni računi, fotografije robe/isporuke)
 // Putanja: companies/{companyId}/orders/{orderId}/{fileName}
+//
+// Izolacija firmi: korisnik pristupa SAMO fajlovima svoje firme. Pripadnost se
+// proverava čitanjem users/{uid} (i companies/{id}) iz Firestore-a (cross-service
+// pravila — najviše 2 firestore.get() po zahtevu, a ovde se koriste tačno 2).
+// Napomena: Firebase pri prvom objavljivanju ovakvih pravila traži da se
+// Storage-u dodeli pristup Firestore-u — potvrdi "Grant access" u konzoli.
 // ============================================================================
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function isMaster() {
+      return request.auth != null && profile().get('role', null) == 'master_admin';
+    }
+    function inCompany(companyId) {
+      return request.auth != null
+             && profile().get('companyId', null) == companyId
+             && profile().get('active', true) != false
+             && !(firestore.get(/databases/(default)/documents/companies/$(companyId)).data.get('status', 'active') in ['blocked', 'deleted']);
+    }
+
     match /companies/{companyId}/orders/{orderId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-                   && request.resource.size < 15 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+      allow read: if isMaster() || inCompany(companyId);
+
+      // Otpremanje: samo članovi te firme, samo slike, do 15 MB.
+      allow create, update: if inCompany(companyId)
+                            && request.resource.size < 15 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+
+      // Brisanje (deo brisanja cele narudžbine — admin ili naručilac), kao i trajno
+      // čišćenje obrisane firme koje radi master admin.
+      // (Ranije je "allow write" pri brisanju padao jer request.resource ne postoji.)
+      allow delete: if isMaster()
+                    || (inCompany(companyId) && profile().get('role', null) in ['admin', 'narucilac']);
     }
   }
 }

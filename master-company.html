@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title data-i18n="page_title_master_company">Master Admin — Detalji firme — Order &amp; Supply</title>
+<link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
+<link rel="apple-touch-icon" href="./assets/icon-192.png" />
+<link rel="manifest" href="./manifest.json" />
+<link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="app-nav"></div>
+  <main class="content">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow"><a href="./master-admin.html" data-i18n="master_back_to_companies">← Sve firme</a></div>
+        <h1 id="company-title">…</h1>
+        <div id="company-badges" style="margin-top:6px;"></div>
+      </div>
+      <div id="company-actions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+    </div>
+
+    <div class="panel hidden" id="company-missing">
+      <p data-i18n="master_company_not_found">Firma nije pronađena.</p>
+    </div>
+
+    <div id="company-content" class="hidden">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="overview" data-i18n="master_tab_overview">Pregled</button>
+        <button class="tab-btn" data-tab="users" data-i18n="master_tab_users">Korisnici</button>
+        <button class="tab-btn" data-tab="stats" data-i18n="master_tab_stats">Statistika</button>
+        <button class="tab-btn" data-tab="log" data-i18n="master_tab_log">Dnevnik</button>
+        <button class="tab-btn" data-tab="admin" data-i18n="master_tab_admin">Pretplata i beleška</button>
+      </div>
+
+      <div id="tab-overview" class="tab-pane"></div>
+      <div id="tab-users" class="tab-pane hidden"></div>
+      <div id="tab-stats" class="tab-pane hidden"></div>
+      <div id="tab-log" class="tab-pane hidden"></div>
+      <div id="tab-admin" class="tab-pane hidden"></div>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="./js/page-master-company.js"></script>
+</body>
+</html>
