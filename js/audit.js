@@ -5,7 +5,7 @@ import { auth, db, collection, addDoc, query, orderBy, limit, getDocs, serverTim
 import { t } from "./i18n.js";
 
 // action primeri: order_created, order_accepted, order_rejected, order_status_changed,
-// item_purchased, claim_opened, claim_closed, user_created, supplier_created, ...
+// item_purchased, claim_opened, claim_resolved, claim_returned, claim_closed, user_created, supplier_created, ...
 // Napomena: actorName ostaje null kad nije prosleđen — prikaz "sistemske" akcije
 // se prevodi u trenutku prikaza (page-master-admin.js), ne u trenutku upisa,
 // da bi poštovao jezik onoga ko GLEDA log, ne onoga ko je akciju izazvao.

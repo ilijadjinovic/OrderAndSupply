@@ -14,6 +14,8 @@ export const NOTIF_EVENTS = {
   ROBA_ISPORUCENA: "roba_isporucena",
   PRIJEM_POTVRDJEN: "prijem_potvrdjen",
   REKLAMACIJA_OTVORENA: "reklamacija_otvorena",
+  REKLAMACIJA_RESENA: "reklamacija_resena",
+  REKLAMACIJA_VRACENA: "reklamacija_vracena",
   NOVA_PORUKA: "nova_poruka",
 };
 

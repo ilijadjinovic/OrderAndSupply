@@ -15,6 +15,7 @@ import { initDatepickers, getISO, setISO } from "./datepicker.js";
 import { escapeHtml, formatDate, badgeClassForStatus, statusLabel, toast } from "./utils.js";
 import { listenOpenOrdersBy, listenRecentClosedBy, getOrdersPageBy, getAllOrdersBy, countOrdersBy } from "./orders.js";
 import {
+  hasOpenClaims, hasPendingClaims,
   PAGE_SIZE, CLOSED_LIVE_HOURS, SEARCH_CACHE_MS, CLOSED_STATUSES,
   isLate, lateInfo, dayKey, durationParts, parseCriteria, matchesSearch, compareByCreatedDesc,
   OUTCOME_STATUSES, periodPresets, allViewList, toMillis,
@@ -29,8 +30,12 @@ export const CARD_DEFS = {
   all: { labelKey: "my_orders", color: "", predicate: () => true },
   awaiting_assign: { labelKey: "dash_awaiting_assign", color: "amber", attention: true, predicate: (o) => o.status === "kreirana" },
   awaiting_accept: { labelKey: "dash_awaiting_accept", color: "amber", attention: true, predicate: (o) => o.status === "ceka_prihvatanje" },
-  awaiting_confirm: { labelKey: "dash_awaiting_confirm", color: "amber", attention: true, predicate: (o) => o.status === "isporucena" },
+  awaiting_confirm: { labelKey: "dash_awaiting_confirm", color: "amber", attention: true, predicate: (o) => o.status === "isporucena" || hasPendingClaims(o) },
+  // Reklamacije: kod isporučioca samo one sa otvorenim stavkama; kod naručioca one koje čekaju
+  // isporučioca (rešene idu na karticu "Čeka moju potvrdu"). Zato se kartica razlikuje po ulozi.
   claims: { labelKey: "dash_claims", color: "red", attention: true, predicate: (o) => o.status === "reklamacija" },
+  claims_open: { labelKey: "dash_claims", color: "red", attention: true, predicate: (o) => hasOpenClaims(o) },
+  claims_waiting: { labelKey: "dash_claims", color: "red", attention: true, predicate: (o) => o.status === "reklamacija" && !hasPendingClaims(o) },
   late: { labelKey: "late", color: "red", attention: false, predicate: (o, now) => isLate(o, now) },
   active_deliveries: { labelKey: "dash_active_deliveries", color: "", attention: false, predicate: (o) => !CLOSED_STATUSES.includes(o.status) },
   in_purchase: { labelKey: "in_purchase", color: "amber", attention: false, predicate: (o) => o.status === "u_nabavci" },

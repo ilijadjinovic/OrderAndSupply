@@ -31,7 +31,7 @@ requireAuth([ROLES.ISPORUCILAC], (user, profile) => {
 
   createDashboard({
     companyId, uid: user.uid, ownerField: "assignedToUid",
-    cardKeys: ["awaiting_accept", "claims", "late", "active_deliveries", "in_purchase", "finished_today"],
+    cardKeys: ["awaiting_accept", "claims_open", "late", "active_deliveries", "in_purchase", "finished_today"],
     compare: compareIsporucilac,
     isAttention: isAttentionIsporucilac,
     activeOnlyDefault: true,      // podrazumevano samo aktivne, "Prikaži sve" dodaje zatvorene/odbijene

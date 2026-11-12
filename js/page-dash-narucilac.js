@@ -10,7 +10,7 @@ import { getCompanySettings } from "./settings.js";
 import { generateOrderPdf } from "./order-print.js";
 import { openRoutePlanner } from "./route-planner.js";
 import { formatDate, escapeHtml, ROLES, toast } from "./utils.js";
-import { compareNarucilac, isAttentionNarucilac } from "./dash-logic.js";
+import { compareNarucilac, isAttentionNarucilac, hasPendingClaims } from "./dash-logic.js";
 import {
   createDashboard, statusCellHtml, priorityCellHtml, closedCellHtml,
 } from "./dash-common.js";
@@ -29,6 +29,9 @@ requireAuth([ROLES.NARUCILAC], (user, profile) => {
     if (o.status === "isporucena") {
       btns.push(`<button type="button" class="btn btn-sm btn-primary" data-action="confirm" data-id="${escapeHtml(o.id)}">${t("confirm_receipt")}</button>`);
     }
+    if (hasPendingClaims(o)) {
+      btns.push(`<a class="btn btn-sm btn-primary" href="./order-detail.html?order=${escapeHtml(o.id)}">${t("claims_review_btn")}</a>`);
+    }
     if (o.status === "odbijena") {
       btns.push(o.repeatedAsOrderId
         ? `<a class="repeated-link" href="./order-detail.html?order=${escapeHtml(o.repeatedAsOrderId)}">${t("dash_repeated_as", { number: escapeHtml(o.repeatedAsNumber || "") })}</a>`
@@ -42,7 +45,7 @@ requireAuth([ROLES.NARUCILAC], (user, profile) => {
 
   createDashboard({
     companyId, uid: user.uid, ownerField: "createdByUid",
-    cardKeys: ["awaiting_assign", "awaiting_confirm", "claims", "late", "in_purchase", "finished_today", "all"],
+    cardKeys: ["awaiting_assign", "awaiting_confirm", "claims_waiting", "late", "in_purchase", "finished_today", "all"],
     compare: compareNarucilac,
     isAttention: isAttentionNarucilac,
     emptyKey: "no_orders_yet",

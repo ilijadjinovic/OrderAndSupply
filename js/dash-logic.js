@@ -25,6 +25,25 @@ export const CLOSED_STATUSES = ["zatvorena", "odbijena"];
 // (ima svoju karticu), reklamacija ima svoju karticu, ostalo je završeno.
 const NOT_LATE_STATUSES = ["isporucena", "potvrdjen_prijem", "zatvorena", "odbijena", "reklamacija"];
 
+// --- Reklamacije na nivou narudžbine -----------------------------------------
+// Narudžbina ostaje u statusu "reklamacija" dok god je bar jedna reklamacija
+// nezatvorena. Brojači claimsOpen (čeka isporučioca) i claimsPendingConfirm
+// (rešeno, čeka potvrdu naručioca) upisuju se na narudžbinu (vidi claims.js).
+// Stare narudžbine nemaju brojače: tada se reklamacija smatra otvorenom.
+export const hasOpenClaims = (o) => o?.status === "reklamacija" && (o.claimsOpen == null || o.claimsOpen > 0);
+export const hasPendingClaims = (o) => o?.status === "reklamacija" && (o.claimsPendingConfirm || 0) > 0;
+
+// Brojevi reklamacija po statusu: otvorena (čeka isporučioca), resena (čeka potvrdu naručioca), zatvorena.
+export function countClaims(claims) {
+  const c = { open: 0, pending: 0, closed: 0, total: claims.length };
+  claims.forEach((x) => {
+    if (x.status === "zatvorena") c.closed++;
+    else if (x.status === "resena") c.pending++;
+    else c.open++;   // "otvorena" i sve nepoznato tretira se kao otvoreno
+  });
+  return c;
+}
+
 export function toMillis(ts) {
   if (ts == null) return null;
   if (typeof ts === "number") return ts;
@@ -127,7 +146,7 @@ const isClosed = (o) => CLOSED_STATUSES.includes(o.status);
 // prve); zatvorene/odbijene na kraju po datumu zatvaranja.
 export function compareNarucilac(now = Date.now()) {
   const rank = (o) => {
-    if (o.status === "isporucena") return 0;
+    if (o.status === "isporucena" || hasPendingClaims(o)) return 0;   // čeka potvrdu naručioca
     if (o.status === "reklamacija") return 1;
     if (o.status === "kreirana") return 2;   // čeka da naručilac izabere isporučioca
     if (isClosed(o)) return 9;
@@ -147,7 +166,7 @@ export function compareIsporucilac(now = Date.now()) {
   const rank = (o) => {
     if (isClosed(o)) return 9;
     if (o.status === "ceka_prihvatanje") return 0;
-    if (o.status === "reklamacija") return 1;
+    if (hasOpenClaims(o)) return 1;   // rešene reklamacije čekaju naručioca, isporučilac tu nema šta da radi
     if (isLate(o, now)) return 2;
     return o.priority === "hitno" ? 3 : 4;
   };
@@ -165,7 +184,7 @@ export function compareIsporucilac(now = Date.now()) {
 export const isAttentionNarucilac = (o, now = Date.now()) =>
   o.status === "isporucena" || o.status === "reklamacija" || o.status === "kreirana" || isLate(o, now);
 export const isAttentionIsporucilac = (o, now = Date.now()) =>
-  !isClosed(o) && (o.status === "ceka_prihvatanje" || o.status === "reklamacija" || isLate(o, now) || o.priority === "hitno");
+  !isClosed(o) && (o.status === "ceka_prihvatanje" || hasOpenClaims(o) || isLate(o, now) || o.priority === "hitno");
 
 // Dugmići ishoda u filterima (Aktivne / Zatvorene / Odbijene) → statusi koje obuhvataju
 export const OUTCOME_STATUSES = { active: OPEN_STATUSES, closed: ["zatvorena"], rejected: ["odbijena"] };

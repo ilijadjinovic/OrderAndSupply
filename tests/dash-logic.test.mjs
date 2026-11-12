@@ -4,7 +4,7 @@ import {
   lateInfo, isLate, normalizeText, buildSearchFields, parseCriteria, matchesSearch,
   compareNarucilac, compareIsporucilac, dayKey, durationParts, toMillis,
   isAttentionNarucilac, isAttentionIsporucilac, periodPresets, OUTCOME_STATUSES, OPEN_STATUSES,
-  allViewList, PAGE_SIZE, orderNumberPrefix,
+  allViewList, PAGE_SIZE, orderNumberPrefix, hasOpenClaims, hasPendingClaims, countClaims,
 } from "../js/dash-logic.js";
 
 const H = 3600000;
@@ -177,6 +177,46 @@ ok("orderNumberPrefix: veliko slovo, dopuna 'NAR-', delimičan unos prefiksa", (
   assert.equal(orderNumberPrefix("na"), "NA");
   assert.equal(orderNumberPrefix("nar-"), "NAR-");
   assert.equal(orderNumberPrefix(""), "");
+});
+
+ok("reklamacije: brojači po statusu (otvorena / rešena / zatvorena)", () => {
+  assert.deepEqual(countClaims([]), { open: 0, pending: 0, closed: 0, total: 0 });
+  assert.deepEqual(
+    countClaims([{ status: "otvorena" }, { status: "resena" }, { status: "resena" }, { status: "zatvorena" }, {}]),
+    { open: 2, pending: 2, closed: 1, total: 5 },
+  );
+});
+ok("reklamacije: hasOpenClaims / hasPendingClaims (stare narudžbine bez brojača = otvorena)", () => {
+  assert.equal(hasOpenClaims({ status: "reklamacija" }), true);                                   // legacy
+  assert.equal(hasOpenClaims({ status: "reklamacija", claimsOpen: 0, claimsPendingConfirm: 2 }), false);
+  assert.equal(hasOpenClaims({ status: "reklamacija", claimsOpen: 1, claimsPendingConfirm: 1 }), true);
+  assert.equal(hasPendingClaims({ status: "reklamacija", claimsOpen: 0, claimsPendingConfirm: 2 }), true);
+  assert.equal(hasPendingClaims({ status: "reklamacija" }), false);                               // legacy
+  assert.equal(hasOpenClaims({ status: "u_nabavci", claimsOpen: 3 }), false);                     // samo u statusu reklamacija
+  assert.equal(hasPendingClaims({ status: "zatvorena", claimsPendingConfirm: 1 }), false);
+});
+ok("reklamacije: naručilac — rešene (čekaju potvrdu) idu odmah uz isporučene, otvorene posle", () => {
+  const mk = (id, extra) => ({ id, priority: "standardno", createdAt: ts(1 * H), ...extra });
+  const list = [
+    mk("obicna", { status: "u_nabavci" }),
+    mk("otvorena", { status: "reklamacija", claimsOpen: 1, claimsPendingConfirm: 0 }),
+    mk("resena", { status: "reklamacija", claimsOpen: 0, claimsPendingConfirm: 2 }),
+    mk("isporucena", { status: "isporucena" }),
+  ];
+  assert.deepEqual(list.sort(compareNarucilac(now)).map((o) => o.id).slice(0, 2).sort(), ["isporucena", "resena"]);
+  assert.deepEqual(list.map((o) => o.id).slice(2), ["otvorena", "obicna"]);
+});
+ok("reklamacije: isporučilac — rešene reklamacije nisu više 'pažnja', otvorene jesu", () => {
+  const base = { priority: "standardno", assignedToUid: "u", assignedAt: ts(1 * H) };
+  assert.equal(isAttentionIsporucilac({ ...base, status: "reklamacija", claimsOpen: 1 }, now), true);
+  assert.equal(isAttentionIsporucilac({ ...base, status: "reklamacija" }, now), true);            // legacy
+  assert.equal(isAttentionIsporucilac({ ...base, status: "reklamacija", claimsOpen: 0, claimsPendingConfirm: 1 }, now), false);
+  const list = [
+    { id: "resena", ...base, status: "reklamacija", claimsOpen: 0, claimsPendingConfirm: 1 },
+    { id: "otvorena", ...base, status: "reklamacija", claimsOpen: 2 },
+    { id: "cekaj", ...base, status: "ceka_prihvatanje" },
+  ];
+  assert.deepEqual(list.sort(compareIsporucilac(now)).map((o) => o.id), ["cekaj", "otvorena", "resena"]);
 });
 
 console.log(`\n${n} testova prošlo.`);

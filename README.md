@@ -49,7 +49,8 @@ ili upload na Firebase Hosting / Netlify / Vercel.
 5. Isporučilac prihvata, obrađuje nabavku, isporučuje — sve na
    `order-detail.html`, koja je zajednička za sve uloge (prikaz se prilagođava
    ulozi i statusu).
-6. Naručilac potvrđuje prijem robe ili otvara reklamaciju.
+6. Naručilac potvrđuje prijem robe ili otvara reklamaciju (za jedan ili više artikala); posle rešenja
+   isporučioca naručilac potvrđuje rešenje, i tek tada se narudžbina zatvara.
 
 Master Admin nalog (uvid u sve firme na platformi) postavlja se ISKLJUČIVO ručno:
 u Firestore konzoli otvori `users/{uid}` dokument željenog korisnika i promeni
@@ -100,6 +101,10 @@ arhiviranje i trajno brisanje — opisano je u `docs/MASTER-ADMIN-I-BEZBEDNOST.m
   naručilac i isporučilac smeju da menjaju samo geo polja lokacija (`onlyGeoFieldsChanged`).
   Napomena: OSM geokodiranje za srpske adrese nije uvek tačno — zato je ručno
   podešavanje na mapi važan deo toka. Država pretrage se menja u `GEO_COUNTRY` (`js/geo.js`).
+- **Reklamacije za više artikala + potvrda naručioca** — jedna prijava može da obuhvati više
+  artikala (po jedna reklamacija po artiklu); tok `otvorena → rešena → zatvorena`, narudžbina se
+  zatvara kad naručilac potvrdi poslednju reklamaciju. Opis i scenariji: `docs/REKLAMACIJE.md`
+  (`js/claims.js`, `js/page-order-detail.js`).
 - **Dobavljači — izmena i dodatna polja** — `admin-suppliers.html` sada ima
   dugme "✎ Izmeni" i polja PIB, matični broj, adresa i tekući račun
   (`js/suppliers.js → updateSupplier`).

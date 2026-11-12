@@ -82,16 +82,24 @@
 </div>
 
 <div class="modal-overlay hidden" id="claim-modal">
-  <div class="modal-card">
-    <div class="modal-head"><h2 data-i18n="open_claim">Otvori reklamaciju</h2><button class="icon-btn" id="close-claim-modal">✕</button></div>
+  <div class="modal-card" style="max-width:760px;">
+    <div class="modal-head"><h2 data-i18n="open_claim">Otvori reklamaciju</h2><button class="icon-btn" id="close-claim-modal" type="button">✕</button></div>
     <form id="claim-form">
-      <div class="field"><label data-i18n="item_label">Artikal</label><select id="claim-item" required></select></div>
-      <div class="form-row">
-        <div class="field"><label data-i18n="requested">Traženo</label><input type="number" id="claim-requested" required /></div>
-        <div class="field"><label data-i18n="received">Primljeno</label><input type="number" id="claim-received" required /></div>
+      <p class="muted" data-i18n="claim_select_hint">Štikliraj artikle na koje imaš primedbu i upiši koliko je stvarno primljeno.</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th style="width:36px;"></th>
+            <th data-i18n="item_label">Artikal</th>
+            <th data-i18n="requested">Traženo</th>
+            <th data-i18n="received">Primljeno</th>
+            <th data-i18n="claim_item_note">Napomena</th>
+          </tr></thead>
+          <tbody id="claim-items-body"></tbody>
+        </table>
       </div>
-      <div class="field"><label data-i18n="problem_description_label">Opis problema</label><textarea id="claim-desc" rows="3"></textarea></div>
-      <button type="submit" class="btn btn-primary" style="width:100%;" data-i18n="open_claim">Otvori reklamaciju</button>
+      <div class="field" style="margin-top:12px;"><label data-i18n="problem_description_label">Opis problema</label><textarea id="claim-desc" rows="3"></textarea></div>
+      <button type="submit" id="claim-submit-btn" class="btn btn-primary" style="width:100%;" data-i18n="open_claim">Otvori reklamaciju</button>
     </form>
   </div>
 </div>

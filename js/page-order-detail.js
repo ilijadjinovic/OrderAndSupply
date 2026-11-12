@@ -13,7 +13,7 @@ import { getLocations } from "./locations.js";
 import { generateOrderPdf } from "./order-print.js";
 import { openRoutePlanner } from "./route-planner.js";
 import { markLocationDelivered, confirmLocationReceipt } from "./deliveries.js";
-import { openClaim, resolveClaim, listenClaims } from "./claims.js";
+import { openClaims, resolveClaim, confirmClaims, returnClaim, listenClaims, CLAIM_STATUS } from "./claims.js";
 import { sendMessageAndNotify, listenMessages } from "./chat.js";
 import { uploadAttachment, listenAttachments } from "./attachments.js";
 import { orderQrUrl, renderQrCode } from "./qrcode.js";
@@ -78,7 +78,7 @@ requireAuth(null, (user, p) => {
   document.getElementById("route-btn").classList.toggle("hidden", !["narucilac", "isporucilac"].includes(p.role));
   getCompanySettings(companyId).then((s) => { companySettings = s; renderAll(); });
 
-  listenOrder(companyId, orderId, (o) => { order = o; renderAll(); });
+  listenOrder(companyId, orderId, (o) => { order = o; renderAll(); renderClaims(); });
   listenOrderItems(companyId, orderId, (i) => { items = i; renderAll(); ensurePickupAddresses(i); });
   listenOrderPurchases(companyId, orderId, (pu) => { purchases = pu; renderAll(); });
   listenDeliveryLocations(companyId, orderId, (dl) => { deliveryLocations = dl; renderAll(); });
@@ -218,7 +218,8 @@ function renderActionBar() {
   }
 
   if (role === "narucilac" && order.createdByUid === uidValue && order.status === S.REKLAMACIJA) {
-    bar.innerHTML = `<span class="badge badge-red">${t("claim_in_progress")}</span>`;
+    bar.innerHTML = `<span class="badge badge-red">${t("claim_in_progress")}</span>`
+      + ((order.claimsPendingConfirm || 0) > 0 ? ` <span class="badge badge-amber">${t("claims_await_your_confirm", { n: order.claimsPendingConfirm })}</span>` : "");
   }
 }
 
@@ -801,13 +802,19 @@ function renderReceiptPanel() {
   });
 
   document.getElementById("open-claim-btn").addEventListener("click", () => {
-    const claimSelect = document.getElementById("claim-item");
-    claimSelect.innerHTML = items.map((i) =>
-      `<option value="${escapeHtml(i.productName)}" data-qty="${i.quantity}">${escapeHtml(i.productName)} (${i.quantity} ${escapeHtml(i.unit)})</option>`
-    ).join("");
-    if (claimSelect.options.length) {
-      document.getElementById("claim-requested").value = claimSelect.options[0].dataset.qty || "";
-    }
+    // Svaki artikal je jedan red; unapred se štikliraju oni kod kojih se uneta primljena količina razlikuje od tražene.
+    document.getElementById("claim-items-body").innerHTML = items.map((i) => {
+      const entered = panel.querySelector(`tr[data-item-id="${i.id}"] .received-qty`)?.value;
+      const received = entered !== undefined && entered !== "" ? entered : (i.purchasedQty || i.quantity);
+      const differs = Number(received) !== Number(i.quantity);
+      return `<tr data-item-id="${escapeHtml(i.id)}" data-name="${escapeHtml(i.productName)}" data-requested="${i.quantity}">
+        <td><input type="checkbox" class="claim-check" ${differs ? "checked" : ""} /></td>
+        <td>${escapeHtml(i.productName)}</td>
+        <td>${i.quantity} ${escapeHtml(i.unit || "")}</td>
+        <td><input type="number" class="claim-received" min="0" step="any" value="${escapeHtml(String(received))}" style="width:90px;" /></td>
+        <td><input type="text" class="claim-note" maxlength="300" /></td>
+      </tr>`;
+    }).join("");
     document.getElementById("claim-modal").classList.remove("hidden");
   });
 }
@@ -913,51 +920,136 @@ async function openCarryOverDialog(shortages) {
 }
 
 // ---------------------------------------------------------------- CLAIMS PANEL (Poglavlje 6)
+// Tok svake reklamacije: otvorena → rešena (čeka potvrdu naručioca) → zatvorena.
+// Isporučilac/admin unose rešenje; naručilac potvrđuje ili vraća na obradu; admin sme da
+// zatvori i bez potvrde naručioca (ostaje trag u reviziji i na kartici).
+function claimBadge(c) {
+  if (c.status === CLAIM_STATUS.CLOSED) return `<span class="badge badge-teal">${t("claim_status_closed")}</span>`;
+  if (c.status === CLAIM_STATUS.RESOLVED) return `<span class="badge badge-amber">${t("claim_status_resolved")}</span>`;
+  return `<span class="badge badge-red">${t("claim_status_open")}</span>`;
+}
+
+async function runClaimAction(btn, fn) {
+  btn.disabled = true;
+  try { await fn(); }
+  catch (err) { console.error(err); toast(t("toast_claim_error"), "error"); btn.disabled = false; }
+}
+
 function renderClaims() {
   const panel = document.getElementById("claims-panel");
-  if (!claims.length) { panel.innerHTML = ""; return; }
-  const canResolve = profile.role === "admin" || (profile.role === "isporucilac" && order?.assignedToUid === uidValue);
+  if (!claims.length || !order || !profile) { panel.innerHTML = ""; return; }
+  const isAdmin = profile.role === "admin";
+  const canResolve = isAdmin || (profile.role === "isporucilac" && order.assignedToUid === uidValue);
+  const isOrderer = profile.role === "narucilac" && order.createdByUid === uidValue;
+  const resolved = claims.filter((c) => c.status === CLAIM_STATUS.RESOLVED);
 
-  panel.innerHTML = `<div class="panel-head"><h2>${t("claims_title")}</h2></div>` + claims.map((c) => `
+  panel.innerHTML = `<div class="panel-head"><h2>${t("claims_title")}</h2>
+    ${isOrderer && resolved.length > 1 ? `<button class="btn btn-sm btn-primary" id="confirm-all-claims">${t("claims_confirm_all_btn", { n: resolved.length })}</button>` : ""}
+  </div>` + claims.map((c) => {
+    const closedLine = c.status === CLAIM_STATUS.CLOSED
+      ? `<p class="muted">${c.closedWithoutOrdererConfirm
+        ? t("claim_closed_by_admin", { name: escapeHtml(c.closedByAdminName || "") })
+        : t("claim_confirmed_by", { name: escapeHtml(c.confirmedByName || "") })}</p>` : "";
+    const btns = [];
+    if (c.status === CLAIM_STATUS.OPEN && canResolve) btns.push(`<button class="btn btn-sm btn-primary" data-act="resolve" data-id="${c.id}">${t("resolve_claim_btn")}</button>`);
+    if (c.status === CLAIM_STATUS.RESOLVED && isOrderer) {
+      btns.push(`<button class="btn btn-sm btn-primary" data-act="confirm" data-id="${c.id}">${t("claim_confirm_btn")}</button>`);
+      btns.push(`<button class="btn btn-sm btn-danger" data-act="return" data-id="${c.id}">${t("claim_return_btn")}</button>`);
+    }
+    if (c.status !== CLAIM_STATUS.CLOSED && isAdmin) btns.push(`<button class="btn btn-sm btn-outline" data-act="admin-close" data-id="${c.id}">${t("claim_admin_close_btn")}</button>`);
+    return `
     <div class="supplier-block">
-      <div class="supplier-block-head">
-        <h3>${escapeHtml(c.itemName)}</h3>
-        <span class="badge ${c.status === "otvorena" ? "badge-red" : "badge-teal"}">${c.status === "otvorena" ? t("claim_status_open") : t("status_zatvorena")}</span>
-      </div>
+      <div class="supplier-block-head"><h3>${escapeHtml(c.itemName)}</h3>${claimBadge(c)}</div>
       <p>${t("requested")}: ${c.requestedQty} · ${t("received")}: ${c.receivedQty}</p>
       <p class="muted">${escapeHtml(c.description || "")}</p>
-      ${c.resolutionNote ? `<p><strong>${t("resolution_label")}:</strong> ${escapeHtml(c.resolutionNote)}</p>` : ""}
-      ${canResolve && c.status === "otvorena" ? `<button class="btn btn-sm btn-primary" data-resolve="${c.id}">${t("close_claim_btn")}</button>` : ""}
-    </div>
-  `).join("");
+      ${c.returnNote && c.status === CLAIM_STATUS.OPEN ? `<p><strong>${t("claim_returned_label")}:</strong> ${escapeHtml(c.returnNote)}</p>` : ""}
+      ${c.resolutionNote && c.status !== CLAIM_STATUS.OPEN ? `<p><strong>${t("resolution_label")}:</strong> ${escapeHtml(c.resolutionNote)}</p>` : ""}
+      ${closedLine}
+      ${btns.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${btns.join("")}</div>` : ""}
+    </div>`;
+  }).join("");
 
-  panel.querySelectorAll("button[data-resolve]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const note = prompt(t("prompt_claim_resolution_note")) || "";
-      await resolveClaim(companyId, orderId, btn.dataset.resolve, { resolutionNote: note, actorName: profile.name });
-      toast(t("toast_claim_closed"), "success");
+  const actor = { actorUid: uidValue, actorName: profile.name };
+  const finish = (res) => toast(res?.orderClosed ? t("toast_claims_order_closed") : t("toast_claim_closed"), "success");
+
+  panel.querySelectorAll("button[data-act]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const c = claims.find((x) => x.id === btn.dataset.id);
+      if (!c) return;
+      runClaimAction(btn, async () => {
+        if (btn.dataset.act === "resolve") {
+          const note = prompt(t("prompt_claim_resolution_note"));
+          if (note === null) { btn.disabled = false; return; }
+          if (!note.trim()) { toast(t("toast_claim_note_required"), "error"); btn.disabled = false; return; }
+          await resolveClaim(companyId, orderId, c.id, { resolutionNote: note.trim(), ...actor, notifyUid: order.createdByUid, itemName: c.itemName });
+          toast(t("toast_claim_resolved"), "success");
+        } else if (btn.dataset.act === "confirm") {
+          finish(await confirmClaims(companyId, orderId, [c.id], actor));
+        } else if (btn.dataset.act === "return") {
+          const note = prompt(t("prompt_claim_return_note"));
+          if (note === null) { btn.disabled = false; return; }
+          if (!note.trim()) { toast(t("toast_claim_note_required"), "error"); btn.disabled = false; return; }
+          await returnClaim(companyId, orderId, c.id, { returnNote: note.trim(), returnCount: c.returnCount || 0, ...actor, notifyUid: order.assignedToUid, itemName: c.itemName });
+          toast(t("toast_claim_returned"), "success");
+        } else if (btn.dataset.act === "admin-close") {
+          let note = null;
+          if (c.status === CLAIM_STATUS.OPEN) {
+            note = prompt(t("prompt_claim_resolution_note"));
+            if (note === null) { btn.disabled = false; return; }
+            if (!note.trim()) { toast(t("toast_claim_note_required"), "error"); btn.disabled = false; return; }
+          } else if (!confirm(t("claim_admin_close_confirm"))) { btn.disabled = false; return; }
+          finish(await confirmClaims(companyId, orderId, [c.id], { ...actor, byAdmin: true, resolutionNote: note ? note.trim() : null }));
+        }
+      });
+    });
+  });
+
+  document.getElementById("confirm-all-claims")?.addEventListener("click", (ev) => {
+    runClaimAction(ev.currentTarget, async () => {
+      finish(await confirmClaims(companyId, orderId, resolved.map((c) => c.id), actor));
     });
   });
 }
 
 document.getElementById("close-claim-modal").addEventListener("click", () => document.getElementById("claim-modal").classList.add("hidden"));
-document.getElementById("claim-item").addEventListener("change", (e) => {
-  const opt = e.target.options[e.target.selectedIndex];
-  document.getElementById("claim-requested").value = opt?.dataset.qty || "";
+
+// Napomena je aktivna samo za štikliran artikal (red se vizuelno stišava dok nije izabran).
+document.getElementById("claim-items-body").addEventListener("change", (e) => {
+  if (!e.target.classList.contains("claim-check")) return;
+  e.target.closest("tr").classList.toggle("muted", !e.target.checked);
 });
 
 document.getElementById("claim-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  await openClaim(companyId, orderId, {
-    itemName: document.getElementById("claim-item").value.trim(),
-    requestedQty: Number(document.getElementById("claim-requested").value),
-    receivedQty: Number(document.getElementById("claim-received").value),
-    description: document.getElementById("claim-desc").value.trim(),
-    actorUid: uidValue, actorName: profile.name, notifyUid: order.assignedToUid,
-  });
-  toast(t("toast_claim_opened"), "success");
-  document.getElementById("claim-modal").classList.add("hidden");
-  e.target.reset();
+  const description = document.getElementById("claim-desc").value.trim();
+  const rows = Array.from(document.querySelectorAll("#claim-items-body tr")).filter((r) => r.querySelector(".claim-check").checked);
+  if (!rows.length) { toast(t("toast_claim_pick_item"), "error"); return; }
+
+  const claimItems = [];
+  for (const r of rows) {
+    const requestedQty = Number(r.dataset.requested);
+    const raw = r.querySelector(".claim-received").value;
+    const receivedQty = Number(raw);
+    const note = r.querySelector(".claim-note").value.trim();
+    if (raw === "" || !Number.isFinite(receivedQty) || receivedQty < 0) { toast(t("toast_invalid_received_qty", { name: r.dataset.name }), "error"); return; }
+    // Ako količina nije manja od tražene, mora da stoji šta nije u redu (kvalitet, pogrešan artikal...).
+    if (receivedQty >= requestedQty && !note && !description) { toast(t("toast_claim_note_needed", { name: r.dataset.name }), "error"); return; }
+    claimItems.push({ itemId: r.dataset.itemId, itemName: r.dataset.name, requestedQty, receivedQty, note });
+  }
+
+  const submitBtn = document.getElementById("claim-submit-btn");
+  submitBtn.disabled = true;
+  try {
+    await openClaims(companyId, orderId, { items: claimItems, description, actorUid: uidValue, actorName: profile.name, notifyUid: order.assignedToUid });
+    toast(t(claimItems.length > 1 ? "toast_claims_opened_many" : "toast_claim_opened", { n: claimItems.length }), "success");
+    document.getElementById("claim-modal").classList.add("hidden");
+    e.target.reset();
+  } catch (err) {
+    console.error(err);
+    toast(t("toast_claim_error"), "error");
+  } finally {
+    submitBtn.disabled = false;
+  }
 });
 
 // ---------------------------------------------------------------- QR PANEL (Poglavlje 11.1)
