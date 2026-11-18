@@ -701,6 +701,12 @@ select.field-error, select.field-error:focus { border-color: var(--color-danger)
   border: 0; border-radius: 50%; background: transparent; color: var(--color-text-muted); font-size: 18px; line-height: 1; cursor: pointer;
 }
 .catalog-search-clear:hover { background: var(--color-surface-2); color: var(--color-text); }
+/* Dobavljači: pretraga u zaglavlju strane (u istom redu kao Sortiraj / PDF / Novi dobavljač) */
+.header-actions .suppliers-search-wrap { flex: 1 1 260px; min-width: 200px; max-width: 520px; }
+.header-actions .suppliers-search-wrap input { height: 42px; box-sizing: border-box; }
+.suppliers-shown { position: absolute; right: 38px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--color-text-muted); pointer-events: none; white-space: nowrap; }
+.suppliers-search-wrap:has(.suppliers-shown:not(:empty)) input { padding-right: 130px; }
+@media (max-width: 760px) { .header-actions .suppliers-search-wrap { flex: 1 1 100%; max-width: none; } }
 .catalog-filter-bar select { flex: 0 1 190px; min-width: 150px; }
 .catalog-shown { margin-left: auto; color: var(--color-text-muted); font-size: 13px; white-space: nowrap; }
 
