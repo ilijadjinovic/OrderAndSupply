@@ -16,12 +16,12 @@
   <main class="content">
     <div class="page-header">
       <div><div class="eyebrow" data-i18n="role_admin">Admin firme</div><h1 data-i18n="suppliers">Dobavljači</h1></div>
-      <div class="header-actions">
-        <div class="catalog-search suppliers-search-wrap">
-          <input type="search" id="suppliers-search" data-i18n-placeholder="suppliers_search_placeholder" data-i18n-title="suppliers_search_label" placeholder="Pretraži dobavljače (naziv, PIB, kontakt, telefon, email)…" title="Pretraga dobavljača" autocomplete="off" />
-          <span class="suppliers-shown" id="suppliers-shown"></span>
-          <button type="button" class="catalog-search-clear hidden" id="suppliers-search-clear" data-i18n-title="catalog_search_clear" title="Obriši pretragu" aria-label="Obriši pretragu">×</button>
-        </div>
+      <div class="catalog-search suppliers-search-wrap">
+        <input type="search" id="suppliers-search" name="suppliers-list-filter" data-i18n-placeholder="suppliers_search_placeholder" data-i18n-title="suppliers_search_label" placeholder="Pretraži dobavljače…" title="Pretraga dobavljača (naziv, PIB, kontakt, telefon, email)" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore />
+        <span class="suppliers-shown" id="suppliers-shown"></span>
+        <button type="button" class="catalog-search-clear hidden" id="suppliers-search-clear" data-i18n-title="catalog_search_clear" title="Obriši pretragu" aria-label="Obriši pretragu">×</button>
+      </div>
+      <div class="header-actions header-actions-nowrap">
         <div class="sort-inline">
           <label data-i18n="sort_by_label">Sortiraj</label>
           <select id="suppliers-sort">

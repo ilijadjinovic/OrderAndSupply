@@ -50,7 +50,7 @@ function renderFiltered() {
   const shown = filterSuppliers(sorted);
   render(shown, !!normalizeSearch(supplierQuery));
   document.getElementById("suppliers-shown").textContent = latestSuppliers.length && shown.length !== latestSuppliers.length
-    ? t("catalog_shown_of", { shown: shown.length, total: latestSuppliers.length }) : "";
+    ? `${shown.length} / ${latestSuppliers.length}` : "";
   document.getElementById("suppliers-search-clear").classList.toggle("hidden", !supplierQuery);
 }
 
@@ -59,6 +59,7 @@ document.getElementById("suppliers-sort").addEventListener("change", (e) => {
   renderFiltered();
 });
 const suppliersSearch = document.getElementById("suppliers-search");
+suppliersSearch.value = "";   // browser ume da sam popuni polje (npr. imenom korisnika) — pretraga uvek kreće prazna
 const setSupplierQuery = (q) => { supplierQuery = q; suppliersSearch.value = q; renderFiltered(); };
 suppliersSearch.addEventListener("input", () => { supplierQuery = suppliersSearch.value; renderFiltered(); });
 suppliersSearch.addEventListener("keydown", (e) => { if (e.key === "Escape" && suppliersSearch.value) setSupplierQuery(""); });
