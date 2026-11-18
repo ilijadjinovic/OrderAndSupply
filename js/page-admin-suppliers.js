@@ -4,6 +4,7 @@ import { loadLang, t } from "./i18n.js";
 import { listenSuppliers, addSupplier, updateSupplier, deleteSupplier, addSupplierLocation, updateSupplierLocation, deleteSupplierLocation, getSupplierLocations } from "./suppliers.js";
 import { coordsBadgeHtml, createGeoField, openCoordsEditor, geocodeMissing, showBatchResults } from "./geo-ui.js";
 import { getCompanySettings } from "./settings.js";
+import { normalizeSearch } from "./catalog-search.js";
 import { escapeHtml, toast, ROLES } from "./utils.js";
 import { attachRowPopover, itemsInfoBtnHtml } from "./row-popover.js";
 import { supplierPopHtml } from "./table-popovers.js";
@@ -12,12 +13,13 @@ await loadLang();
 let companyId, actorName, currentUid, currentRole, activeSupplierId, activeSupplierName;
 let latestSuppliers = [];
 let supplierSort = "name_asc";
+let supplierQuery = "";
 
 requireAuth([ROLES.ADMIN, ROLES.NARUCILAC], (user, profile) => {
   companyId = profile.companyId; actorName = profile.name;
   currentUid = user.uid; currentRole = profile.role;
   renderNav({ companyId, uid: user.uid, profile });
-  listenSuppliers(companyId, (suppliers) => { latestSuppliers = suppliers; render(sortSuppliers(suppliers)); });
+  listenSuppliers(companyId, (suppliers) => { latestSuppliers = suppliers; renderFiltered(); });
   if (profile.role === ROLES.ADMIN) document.getElementById("suppliers-geo-btn")?.classList.remove("hidden");
 });
 
@@ -33,15 +35,39 @@ function sortSuppliers(suppliers) {
   return sorted;
 }
 
+// Pretraga: radi nad već učitanom listom (bez novih čitanja), ne pravi razliku između velikih/malih slova i kvačica,
+// razume ćirilicu; kod više reči moraju da se nađu sve (redosled nije bitan).
+function supplierHaystack(s) {
+  return normalizeSearch([s.name, s.pib, s.maticniBroj, s.contact, s.phone, s.email, s.address].filter(Boolean).join(" "));
+}
+function filterSuppliers(suppliers) {
+  const terms = normalizeSearch(supplierQuery).split(" ").filter(Boolean);
+  if (!terms.length) return suppliers;
+  return suppliers.filter((s) => { const hay = supplierHaystack(s); return terms.every((term) => hay.includes(term)); });
+}
+function renderFiltered() {
+  const sorted = sortSuppliers(latestSuppliers);
+  const shown = filterSuppliers(sorted);
+  render(shown, !!normalizeSearch(supplierQuery));
+  document.getElementById("suppliers-shown").textContent = latestSuppliers.length && shown.length !== latestSuppliers.length
+    ? t("catalog_shown_of", { shown: shown.length, total: latestSuppliers.length }) : "";
+  document.getElementById("suppliers-search-clear").classList.toggle("hidden", !supplierQuery);
+}
+
 document.getElementById("suppliers-sort").addEventListener("change", (e) => {
   supplierSort = e.target.value;
-  render(sortSuppliers(latestSuppliers));
+  renderFiltered();
 });
+const suppliersSearch = document.getElementById("suppliers-search");
+const setSupplierQuery = (q) => { supplierQuery = q; suppliersSearch.value = q; renderFiltered(); };
+suppliersSearch.addEventListener("input", () => { supplierQuery = suppliersSearch.value; renderFiltered(); });
+suppliersSearch.addEventListener("keydown", (e) => { if (e.key === "Escape" && suppliersSearch.value) setSupplierQuery(""); });
+document.getElementById("suppliers-search-clear").addEventListener("click", () => { setSupplierQuery(""); suppliersSearch.focus(); });
 
-function render(suppliers) {
+function render(suppliers, isSearching = false) {
   const isAdmin = currentRole === ROLES.ADMIN;
   const body = document.getElementById("suppliers-body");
-  if (!suppliers.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">${t("no_suppliers")}</td></tr>`; return; }
+  if (!suppliers.length) { body.innerHTML = `<tr class="empty-row"><td colspan="6">${t(isSearching ? "suppliers_no_search_results" : "no_suppliers")}</td></tr>`; return; }
   body.innerHTML = suppliers.map((s) => {
     const canEdit = isAdmin || s.createdBy === currentUid;
     return `
