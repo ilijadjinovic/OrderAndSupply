@@ -2,11 +2,12 @@ import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
 import { loadLang, t, currentLang } from "./i18n.js";
 import {
-  listenOrdersSince, listenOpenOrdersBy, listenRecentClosedBy,
+  listenOrdersSince, listenOpenOrdersBy, listenRecentClosedBy, listenAwaitingInvoiceBy,
   getOrdersPageBy, countOrdersBy, searchOrdersByNumberPrefix, getAverageProcessingMs, getAllOrdersBy,
 } from "./orders.js";
 import { attachOrderItemsPopover, itemsInfoBtnHtml } from "./order-items-popover.js";
 import { isLate, allViewList, compareByCreatedDesc, toMillis, orderNumberPrefix, parseCriteria, matchesSearch, PAGE_SIZE, CLOSED_LIVE_HOURS, SEARCH_CACHE_MS } from "./dash-logic.js";
+import { isAwaitingInvoice } from "./invoice-logic.js";
 import { formatDate, escapeHtml, badgeClassForStatus, statusLabel, ROLES, roleLabel, debounce, toast } from "./utils.js";
 
 await loadLang();
@@ -16,7 +17,7 @@ await loadLang();
 //  • cela istorija po datumu kreiranja u turama po 30 ("Učitaj još")
 //  • ukupan broj narudžbina firme iz baze (Y u "Prikazano X od Y")
 const D = {
-  open: [], today: [], pages: [], cursor: null, exhausted: false, loadingPage: false, gotPage: false,
+  open: [], today: [], invoice: [], pages: [], cursor: null, exhausted: false, loadingPage: false, gotPage: false,
   gotOpen: false, gotToday: false, total: null, totalLoading: false, openSig: null,
   visible: PAGE_SIZE, list: [],
   searchResults: [], searchLoading: false, searchCapped: false, searchSeq: 0, // pretraga cele istorije (isto kao na tablama naručioca/isporučioca)
@@ -36,6 +37,7 @@ const FILTERS = {
     predicate: (o) => isLate(o, Date.now()), // isto pravilo kao na tablama naručioca/isporučioca (hitno 2h, standardno 24h od dodele)
   },
   in_purchase: { labelKey: "in_purchase", predicate: (o) => o.status === "u_nabavci" },
+  awaiting_invoice: { labelKey: "dash_awaiting_invoice", predicate: (o) => isAwaitingInvoice(o) }, // zatvorene narudžbine bez (potpunog) računa
   finished_today: {
     labelKey: "finished_today",
     predicate: (o) => o.status === "zatvorena" && (o.closedAt || o.updatedAt)?.toDate?.().toDateString() === new Date().toDateString(),
@@ -43,8 +45,8 @@ const FILTERS = {
 };
 
 const byId = (...lists) => { const m = new Map(); lists.forEach((l) => l.forEach((o) => m.set(o.id, o))); return m; };
-const base = () => Array.from(byId(D.today, D.open).values());       // za kartice i filtere
-const liveMap = () => byId(D.pages, D.today, D.open);                  // novije verzije pobeđuju
+const base = () => Array.from(byId(D.invoice, D.today, D.open).values());       // za kartice i filtere
+const liveMap = () => byId(D.pages, D.invoice, D.today, D.open);                  // novije verzije pobeđuju
 const inAllMode = () => !searchTerm && !activeFilter;
 const floorMs = () => (D.exhausted ? -Infinity : (toMillis(D.cursor?.data?.().createdAt) ?? Infinity));
 
@@ -147,6 +149,7 @@ requireAuth([ROLES.ADMIN], (user, profile) => {
     loadAvg(); // zatvaranje (i upis vremena obrade) menja prosek
     refresh();
   }, onError);
+  listenAwaitingInvoiceBy(companyId, null, null, (orders) => { D.invoice = orders; refresh(); }, onError);
   loadPage();
   loadTotal();
 
@@ -208,6 +211,7 @@ function renderStats() {
   const today = new Date().toDateString();
   const finishedToday = orders.filter((o) => o.status === "zatvorena" && (o.closedAt || o.updatedAt)?.toDate?.().toDateString() === today).length;
   const late = orders.filter((o) => isLate(o, Date.now())).length;
+  const awaitingInvoice = orders.filter(isAwaitingInvoice).length;
 
   const cardCls = (key) => `stat-card${activeFilter === key ? " active" : ""}`;
   document.getElementById("stat-cards").innerHTML = `
@@ -215,6 +219,7 @@ function renderStats() {
     <div class="${cardCls("late")} red" data-filter="late" role="button" tabindex="0"><div class="stat-label" data-i18n="late">Kasne</div><div class="stat-value">${late}</div></div>
     <div class="${cardCls("in_purchase")} amber" data-filter="in_purchase" role="button" tabindex="0"><div class="stat-label" data-i18n="in_purchase">U nabavci</div><div class="stat-value">${inPurchase}</div></div>
     <div class="${cardCls("finished_today")} teal" data-filter="finished_today" role="button" tabindex="0"><div class="stat-label" data-i18n="finished_today">Danas završeno</div><div class="stat-value">${finishedToday}</div></div>
+    <div class="${cardCls("awaiting_invoice")} amber" data-filter="awaiting_invoice" role="button" tabindex="0"><div class="stat-label" data-i18n="dash_awaiting_invoice">Čeka račun</div><div class="stat-value">${awaitingInvoice}</div></div>
   `;
   document.getElementById("stat-cards").querySelectorAll("[data-filter]").forEach((card) => {
     card.addEventListener("click", () => selectFilter(card.dataset.filter));
@@ -269,7 +274,7 @@ function renderOrdersTable() {
       <td>${escapeHtml(o.createdByName || "—")}</td>
       <td>${escapeHtml(o.assignedToName || "—")}</td>
       <td>${o.priority === "hitno" ? `<span class="badge badge-urgent">${t("urgent")}</span>` : `<span class="badge badge-gray">${t("standard")}</span>`}</td>
-      <td><span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span></td>
+      <td><span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span>${isAwaitingInvoice(o) ? `<span class="badge badge-amber" title="${escapeHtml(t("awaiting_invoice_hint"))}">${t("awaiting_invoice_badge")}</span>` : ""}</td>
       <td>${formatDate(o.createdAt)}</td>
       <td>${o.status === "zatvorena" && (o.closedAt || o.updatedAt) ? formatDate(o.closedAt || o.updatedAt) : t("not_closed_yet")}</td>
     </tr>

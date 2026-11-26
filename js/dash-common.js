@@ -13,7 +13,7 @@ import { t } from "./i18n.js";
 import { attachOrderItemsPopover } from "./order-items-popover.js";
 import { initDatepickers, getISO, setISO } from "./datepicker.js";
 import { escapeHtml, formatDate, badgeClassForStatus, statusLabel, toast } from "./utils.js";
-import { listenOpenOrdersBy, listenRecentClosedBy, getOrdersPageBy, getAllOrdersBy, countOrdersBy } from "./orders.js";
+import { listenOpenOrdersBy, listenRecentClosedBy, listenAwaitingInvoiceBy, getOrdersPageBy, getAllOrdersBy, countOrdersBy } from "./orders.js";
 import {
   hasOpenClaims, hasPendingClaims,
   PAGE_SIZE, CLOSED_LIVE_HOURS, SEARCH_CACHE_MS, CLOSED_STATUSES,
@@ -22,6 +22,7 @@ import {
 } from "./dash-logic.js";
 
 export { isLate, lateInfo } from "./dash-logic.js";
+import { isAwaitingInvoice } from "./invoice-logic.js";
 
 // --- Definicije kartica -------------------------------------------------------
 // Ista predikat-funkcija se koristi za broj na kartici i za filter tabele, pa
@@ -39,6 +40,8 @@ export const CARD_DEFS = {
   late: { labelKey: "late", color: "red", attention: false, predicate: (o, now) => isLate(o, now) },
   active_deliveries: { labelKey: "dash_active_deliveries", color: "", attention: false, predicate: (o) => !CLOSED_STATUSES.includes(o.status) },
   in_purchase: { labelKey: "in_purchase", color: "amber", attention: false, predicate: (o) => o.status === "u_nabavci" },
+  // Zatvorene narudžbine kojima još nedostaje račun (naknadni unos troška) — traje dok se račun ne unese
+  awaiting_invoice: { labelKey: "dash_awaiting_invoice", color: "amber", attention: false, predicate: (o) => isAwaitingInvoice(o) },
   finished_today: {
     labelKey: "finished_today", color: "teal", attention: false,
     predicate: (o, now) => o.status === "zatvorena" && dayKey(o.closedAt || o.updatedAt) === dayKey(now),
@@ -60,7 +63,8 @@ export function lateTagHtml(o, now = Date.now()) {
 export function statusCellHtml(o, { showReason = false, now = Date.now() } = {}) {
   const reason = showReason && o.status === "odbijena" && o.rejectionReason
     ? `<span class="reject-reason">${t("dash_rejection_reason")}: ${escapeHtml(o.rejectionReason)}</span>` : "";
-  return `<span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span>${lateTagHtml(o, now)}${reason}`;
+  const inv = isAwaitingInvoice(o) ? `<span class="badge badge-amber" title="${escapeHtml(t("awaiting_invoice_hint"))}">${t("awaiting_invoice_badge")}</span>` : "";
+  return `<span class="badge ${badgeClassForStatus(o.status)}">${statusLabel(o.status)}</span>${inv}${lateTagHtml(o, now)}${reason}`;
 }
 export function priorityCellHtml(o) {
   return o.priority === "hitno"
@@ -92,7 +96,7 @@ const $ = (id) => document.getElementById(id);
 // }
 export function createDashboard(cfg) {
   const S = {
-    open: [], today: [], pages: [], pageCursor: null, exhausted: false, loadingPage: false,
+    open: [], today: [], invoice: [], pages: [], pageCursor: null, exhausted: false, loadingPage: false,
     gotPage: false, total: null, totalLoading: false, openSig: null, // total = ukupan broj narudžbina korisnika (iz baze)
     gotOpen: false, gotToday: false,
     filter: "all", showAll: !cfg.activeOnlyDefault, visible: PAGE_SIZE,
@@ -108,8 +112,8 @@ export function createDashboard(cfg) {
   const inputs = { text: $("search-text"), from: $("search-from"), to: $("search-to") };
 
   // Kartice i filteri rade nad otvorenim + danas zatvorenim (uživo, pa su brojevi tačni).
-  const base = () => Array.from(byId(S.today, S.open).values());
-  const liveMap = () => byId(S.pages, S.today, S.open); // novije verzije poslednje, pa pobeđuju
+  const base = () => Array.from(byId(S.invoice, S.today, S.open).values());
+  const liveMap = () => byId(S.pages, S.invoice, S.today, S.open); // novije verzije poslednje, pa pobeđuju
   // Podrazumevani prikaz "sve narudžbine": lista se puni u turama iz baze (ne iz memorije).
   const inAllMode = () => !S.searching && S.filter === "all" && S.showAll;
   const floorMs = () => {
@@ -486,7 +490,7 @@ export function createDashboard(cfg) {
       S.openSig = sig;
     }
     S[kind] = orders;
-    S[kind === "open" ? "gotOpen" : "gotToday"] = true;
+    if (kind !== "invoice") S[kind === "open" ? "gotOpen" : "gotToday"] = true; // "Čeka račun" ne blokira učitavanje liste
     S.now = Date.now();
     renderAll();
   }
@@ -505,6 +509,7 @@ export function createDashboard(cfg) {
       if (S.showAll) ensureAllData();
       listenOpenOrdersBy(cfg.companyId, cfg.ownerField, cfg.uid, (o) => onData("open", o), onError);
       listenRecentClosedBy(cfg.companyId, cfg.ownerField, cfg.uid, S.cutoff, (o) => onData("today", o), onError);
+      listenAwaitingInvoiceBy(cfg.companyId, cfg.ownerField, cfg.uid, (o) => onData("invoice", o), onError);
     },
   };
 }

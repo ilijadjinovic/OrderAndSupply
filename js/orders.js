@@ -8,6 +8,7 @@ import {
 } from "./firebase-init.js";
 import { ORDER_STATUS, DELIVERY_LOCATION_STATUS, statusLabel, uid } from "./utils.js";
 import { OPEN_STATUSES, SEARCH_CAP, buildSearchFields, toMillis } from "./dash-logic.js";
+import { recalcInvoiceState } from "./invoices.js";
 import { logAudit } from "./audit.js";
 import { createNotification, NOTIF_EVENTS } from "./notifications.js";
 import { getIsporucioci } from "./users.js";
@@ -121,6 +122,7 @@ export async function createOrder(companyId, {
     assignedAt: assignedToUid ? serverTimestamp() : null,
     supplierIds: [...new Set(items.map((i) => i.supplierId))],
     itemCount: items.length, recurring,
+    invoiceStatus: "bez_racuna", invoicedTotal: 0, // faza računa: "Čeka račun" se računa tek kad je narudžbina zatvorena
     ...searchFields,
     ...extraFields,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -264,7 +266,7 @@ export async function assignOrder(companyId, orderId, { assignedToUid, assignedT
 // (pre nego što je isporučilac prihvati). Brišemo prvo sve podkolekcije, pa tek
 // onda glavni dokument narudžbine — jer pravila za podkolekcije proveravaju
 // stanje narudžbine preko get(), koji mora da nađe dokument narudžbine.
-const ORDER_SUBCOLLECTIONS = ["items", "purchases", "deliveryLocations", "claims", "messages", "attachments"];
+const ORDER_SUBCOLLECTIONS = ["items", "purchases", "deliveryLocations", "claims", "messages", "attachments", "invoices"];
 
 export async function deleteOrder(companyId, orderId, { actorUid, actorName, orderNumber }) {
   // Prvo obriši stvarne fajlove priloga iz Storage-a (Firestore delete ne čisti Storage automatski)
@@ -415,6 +417,8 @@ export async function confirmReceipt(companyId, orderId, { actorUid, actorName, 
     ...(created ? { carriedOverAsOrderId: created.id, carriedOverAsNumber: created.orderNumber } : {}),
   });
   await safeRecordProcessingTime(companyId, orderId);
+  // Status računa (ima li računa / da li uopšte treba) računa se iz stvarno preuzetih stavki; greška ne obara zatvaranje
+  try { await recalcInvoiceState(companyId, orderId, null); } catch (e) { console.error("Status računa nije osvežen:", e); }
   await logAudit(companyId, { action: "order_status_changed", entity: "Orders", entityId: orderId, actorUid, actorName, details: statusLabel(ORDER_STATUS.POTVRDJEN_PRIJEM) });
   await createNotification(companyId, { toUid: null, event: NOTIF_EVENTS.PRIJEM_POTVRDJEN, orderId, titleKey: "notif_receipt_confirmed_title", bodyKey: "notif_receipt_confirmed_body" });
   return created;
@@ -530,6 +534,12 @@ export function listenOrdersSince(companyId, sinceDate, callback, onError) {
 }
 export function listenRecentClosedBy(companyId, field, value, sinceDate, callback, onError) {
   const q = query(ordersCol(companyId), ...scoped(companyId, field, value), where("closedAt", ">=", Timestamp.fromDate(sinceDate)), orderBy("closedAt", "desc"));
+  return onSnapshot(q, (snap) => callback(mapDocs(snap)), onError);
+}
+// Zatvorene narudžbine kojima još nedostaje račun (ili deo računa) — uživo, bez vremenskog ograničenja.
+// Narudžbine nastale pre uvođenja računa dobijaju polje invoiceStatus jednokratnom dopunom (backfill-orders.html).
+export function listenAwaitingInvoiceBy(companyId, field, value, callback, onError) {
+  const q = query(ordersCol(companyId), ...scoped(companyId, field, value), where("status", "==", ORDER_STATUS.ZATVORENA), where("invoiceStatus", "in", ["bez_racuna", "delimicno"]));
   return onSnapshot(q, (snap) => callback(mapDocs(snap)), onError);
 }
 // Jedna tura istorije po datumu kreiranja (najnovije prve), bez obzira na status.

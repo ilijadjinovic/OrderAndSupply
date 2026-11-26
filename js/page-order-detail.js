@@ -6,7 +6,10 @@ import {
   acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, deleteOrder, assignOrder,
   updateOrderItem, addOrderItem, updateOrderPriority, updateOrderRequestedBy, addOrderDeliveryLocation, removeOrderDeliveryLocation,
 } from "./orders.js";
-import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, setPurchasePayment, calcOrderTotal } from "./purchases.js";
+import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, calcOrderTotal } from "./purchases.js";
+import { listenInvoices } from "./invoices.js";
+import { invoiceBlockHtml, bindInvoiceBlocks } from "./invoice-ui.js";
+import { canManageInvoices } from "./invoice-logic.js";
 import { getSupplierLocations, getSuppliers, getSupplierDestinations } from "./suppliers.js";
 import { getProducts, smartSearch } from "./catalog.js";
 import { getLocations } from "./locations.js";
@@ -34,7 +37,7 @@ const orderId = getParam("order");
 if (!orderId) document.body.innerHTML = `<p style='padding:40px;'>${t("order_not_found_missing_id")}</p>`;
 
 let companyId, uidValue, profile, companySettings = null;
-let order = null, items = [], purchases = [], deliveryLocations = [], claims = [];
+let order = null, items = [], purchases = [], invoices = [], deliveryLocations = [], claims = [];
 
 // Za editovanje narudžbine dok nije prihvaćena (Poglavlje 2.3, "ozbiljan edit svega"):
 // keš proizvoda po dobavljaču (za "Dodaj artikal iz kataloga") i lista lokacija firme
@@ -81,6 +84,7 @@ requireAuth(null, (user, p) => {
   listenOrder(companyId, orderId, (o) => { order = o; renderAll(); renderClaims(); });
   listenOrderItems(companyId, orderId, (i) => { items = i; renderAll(); ensurePickupAddresses(i); });
   listenOrderPurchases(companyId, orderId, (pu) => { purchases = pu; renderAll(); });
+  listenInvoices(companyId, orderId, (inv) => { invoices = inv; renderAll(); });
   listenDeliveryLocations(companyId, orderId, (dl) => { deliveryLocations = dl; renderAll(); });
   listenClaims(companyId, orderId, (c) => { claims = c; renderClaims(); });
   listenMessages(companyId, orderId, renderChat);
@@ -484,9 +488,12 @@ function renderPurchasesPanel() {
   const canWork = profile.role === "isporucilac" && order.assignedToUid === uidValue
     && [ORDER_STATUS.PRIHVACENA, ORDER_STATUS.U_NABAVCI].includes(order.status);
 
-  // Finansijski unos je dozvoljen isporučiocu sve dok narudžbina nije prešla u fazu isporuke
-  const canEditFinance = profile.role === "isporucilac" && order.assignedToUid === uidValue
-    && [ORDER_STATUS.PRIHVACENA, ORDER_STATUS.U_NABAVCI, ORDER_STATUS.ZAVRSENA_NABAVKA].includes(order.status);
+  // Računi (finansije): isporučilac narudžbine, naručilac koji ju je napravio i admin firme — u svim fazama,
+  // pa i posle zatvaranja narudžbine (naknadni unos troška). Vidi invoice-logic.js i firestore.rules.
+  const invCtx = {
+    companyId, orderId, uid: uidValue, profile, canManage: canManageInvoices(profile, order, uidValue),
+    currency: companyCurrency(), money: (a) => formatCurrency(a), lang: currentLang,
+  };
 
   panel.innerHTML = `<div class="panel-head"><h2>${t("purchases_by_supplier_title")}</h2></div>` + purchases.map((p) => {
     const supplierItems = items.filter((i) => i.supplierId === p.supplierId);
@@ -542,29 +549,12 @@ function renderPurchasesPanel() {
       <div class="supplier-block">
         <div class="supplier-block-head"><h3>${escapeHtml(p.supplierName)}</h3>${statusBadge}</div>
         ${locGroupsHtml}
-        <div class="form-row payment-form" data-purchase="${p.id}" style="margin-top:12px;align-items:end;">
-          <div class="field"><label>${t("paid_amount_label")} (${companyCurrency()})</label><input type="number" step="0.01" min="0" class="pay-amount" value="${p.paidAmount ?? ""}" placeholder="0.00" ${canEditFinance ? "" : "disabled"} /></div>
-          <div class="field"><label>${t("receipt_number_label")}</label><input type="text" class="pay-receipt-number" value="${escapeHtml(p.receiptNumber || "")}" ${canEditFinance ? "" : "disabled"} /></div>
-          <div class="field"><label>${t("receipt_date_label")}</label><input type="text" class="js-datepicker pay-receipt-date" data-value="${escapeHtml(p.receiptDate || "")}" ${canEditFinance ? "" : "disabled"} /></div>
-          ${canEditFinance ? `<button type="button" class="btn btn-sm btn-primary" data-save-payment="${p.id}">💾 ${t("save")}</button>` : ""}
-        </div>
-        ${!canEditFinance && (p.paidAmount || p.receiptNumber) ? `<p class="muted" style="margin-top:4px;">${t("paid_label")}: <strong>${formatCurrency(p.paidAmount)}</strong>${p.receiptNumber ? ` · ${t("receipt_no_short")} ${escapeHtml(p.receiptNumber)}` : ""}${p.receiptDate ? ` ${t("from_date_prefix")} ${formatDateShort2(p.receiptDate)}` : ""}</p>` : ""}
+        ${invoiceBlockHtml(p, invoices, invCtx)}
       </div>
     `;
   }).join("");
 
-  initDatepickers(panel);
-
-  panel.querySelectorAll("button[data-save-payment]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const row = panel.querySelector(`.payment-form[data-purchase="${btn.dataset.savePayment}"]`);
-      const paidAmount = Number(row.querySelector(".pay-amount").value) || 0;
-      const receiptNumber = row.querySelector(".pay-receipt-number").value.trim();
-      const receiptDate = getISO(row.querySelector(".pay-receipt-date"));
-      await setPurchasePayment(companyId, orderId, btn.dataset.savePayment, { paidAmount, receiptNumber, receiptDate }, profile.name);
-      toast(t("toast_finance_saved"), "success");
-    });
-  });
+  bindInvoiceBlocks(panel, purchases, invoices, invCtx);
   panel.querySelectorAll(".item-row[data-item-id] button[data-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = btn.closest(".item-row");
@@ -608,23 +598,30 @@ function renderFinancePanel() {
   const isClosed = [ORDER_STATUS.ZATVORENA, ORDER_STATUS.POTVRDJEN_PRIJEM].includes(order.status);
   if (total === 0 && !isClosed) { panel.innerHTML = ""; return; }
 
+  const hasVat = (p) => typeof p.invoiceCount === "number" && p.invoiceCount > 0;
+  const netTotal = purchases.reduce((s, p) => s + (hasVat(p) ? Number(p.netAmount) || 0 : 0), 0);
+  const vatTotal = purchases.reduce((s, p) => s + (hasVat(p) ? Number(p.vatAmount) || 0 : 0), 0);
+  const waiting = isClosed && ["bez_racuna", "delimicno"].includes(order.invoiceStatus);
+
   panel.innerHTML = `
-    <div class="panel-head"><h2>${t("finance_overview_title")}</h2>${isClosed ? `<span class="badge badge-green">${t("order_closed_badge")}</span>` : ""}</div>
+    <div class="panel-head"><h2>${t("finance_overview_title")}</h2>${isClosed ? `<span class="badge badge-green">${t("order_closed_badge")}</span>` : ""}${waiting ? `<span class="badge badge-amber" style="margin-left:8px;">${t("awaiting_invoice_badge")}</span>` : ""}</div>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>${t("supplier")}</th><th>${t("receipt_number_label")}</th><th>${t("receipt_date_label")}</th><th>${t("amount_label")}</th></tr></thead>
+        <thead><tr><th>${t("supplier")}</th><th>${t("receipt_number_label")}</th><th>${t("receipt_date_label")}</th><th>${t("inv_net")}</th><th>${t("inv_vat")}</th><th>${t("inv_gross")}</th></tr></thead>
         <tbody>
           ${purchases.map((p) => `
             <tr>
               <td>${escapeHtml(p.supplierName)}</td>
               <td>${escapeHtml(p.receiptNumber || "—")}</td>
               <td>${p.receiptDate ? formatDateShort2(p.receiptDate) : "—"}</td>
+              <td class="mono">${hasVat(p) ? formatCurrency(p.netAmount) : "—"}</td>
+              <td class="mono">${hasVat(p) ? formatCurrency(p.vatAmount) : "—"}</td>
               <td class="mono">${formatCurrency(p.paidAmount)}</td>
             </tr>
           `).join("")}
         </tbody>
         <tfoot>
-          <tr><td colspan="3" style="text-align:right;"><strong>${t("order_total_label")}:</strong></td><td class="mono"><strong>${formatCurrency(total)}</strong></td></tr>
+          <tr><td colspan="3" style="text-align:right;"><strong>${t("order_total_label")}:</strong></td><td class="mono">${formatCurrency(netTotal)}</td><td class="mono">${formatCurrency(vatTotal)}</td><td class="mono"><strong>${formatCurrency(total)}</strong></td></tr>
         </tfoot>
       </table>
     </div>

@@ -94,6 +94,18 @@ service cloud.firestore {
             && o.status in ['kreirana', 'ceka_prihvatanje']);
     }
 
+
+    // Računi narudžbine (podkolekcija invoices): unos/izmenu sme SAMO admin firme, naručilac koji je
+    // napravio narudžbinu i isporučilac kome je dodeljena — i to kad je narudžbina prihvaćena (ne
+    // 'kreirana', 'ceka_prihvatanje', 'odbijena'). Radi i za ZATVORENE narudžbine (naknadni unos).
+    function canManageInvoices(companyId, orderId) {
+      let o = get(/databases/$(database)/documents/companies/$(companyId)/orders/$(orderId)).data;
+      return !(o.status in ['kreirana', 'ceka_prihvatanje', 'odbijena'])
+        && (isAdminOf(companyId)
+            || (isNarucilacOf(companyId) && o.createdByUid == request.auth.uid)
+            || (isIsporucilacOf(companyId) && o.assignedToUid == request.auth.uid));
+    }
+
     // --------------------------------------------------------------------
     // Platforma (Master Admin)
     // --------------------------------------------------------------------
@@ -246,6 +258,14 @@ service cloud.firestore {
         match /purchases/{purchaseId} {
           allow read: if isCompanyMember(companyId);
           allow write: if isCompanyMember(companyId);
+        }
+        match /invoices/{invoiceId} {
+          allow read: if isCompanyMember(companyId);
+          allow create: if canManageInvoices(companyId, orderId) && request.resource.data.createdByUid == request.auth.uid;
+          allow update: if canManageInvoices(companyId, orderId);
+          // Brisanje: admin uvek; ostali samo račun koji su sami uneli
+          allow delete: if canManageInvoices(companyId, orderId)
+            && (isAdminOf(companyId) || resource.data.createdByUid == request.auth.uid);
         }
         match /deliveryLocations/{locId} {
           allow read: if isCompanyMember(companyId);

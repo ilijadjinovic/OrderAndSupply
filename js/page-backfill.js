@@ -1,5 +1,6 @@
 // Jednokratna dopuna narudžbina nastalih pre izmena na kontrolnim tablama (admin).
-// Dopunjava: searchText / supplierNames / deliveryLocationNames, assignedAt, closedAt, processingMs.
+// Dopunjava: searchText / supplierNames / deliveryLocationNames, assignedAt, closedAt, processingMs,
+// invoiceStatus / invoicedTotal (status računa: za oznaku i karticu "Čeka račun" na starim narudžbinama).
 // Idempotentno: narudžbine koje već imaju ta polja se preskaču.
 import { requireAuth } from "./auth.js";
 import { renderNav } from "./nav.js";
@@ -8,6 +9,8 @@ import { db, collection, getDocs, query, orderBy, limit, startAfter, writeBatch 
 import { getOrderItems, getOrderDeliveryLocations } from "./orders.js";
 import { buildSearchFields, CLOSED_STATUSES } from "./dash-logic.js";
 import { ROLES } from "./utils.js";
+import { computeInvoiceStatus } from "./invoice-logic.js";
+import { getOrderPurchases } from "./orders.js";
 
 await loadLang();
 
@@ -43,6 +46,12 @@ requireAuth([ROLES.ADMIN], (user, profile) => {
           // Vreme obrade za tačan prosek na Admin tabli (zatvorene narudžbine koje imaju confirmedAt)
           if (o.status === "zatvorena" && o.createdAt && o.confirmedAt && typeof o.processingMs !== "number") {
             upd.processingMs = Math.max(0, o.confirmedAt.toMillis() - o.createdAt.toMillis());
+          }
+          // Status računa: iz preuzetih stavki i već unetih iznosa (raniji ručni unos računa se kao račun)
+          if (typeof o.invoiceStatus !== "string") {
+            const [pu, it] = await Promise.all([getOrderPurchases(profile.companyId, d.id), getOrderItems(profile.companyId, d.id)]);
+            upd.invoiceStatus = computeInvoiceStatus(pu, it);
+            upd.invoicedTotal = Math.round(pu.reduce((s, p) => s + (Number(p.paidAmount) || 0), 0) * 100) / 100;
           }
           done++;
           if (Object.keys(upd).length) {
