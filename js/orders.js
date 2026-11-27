@@ -395,22 +395,26 @@ export async function removeOrderDeliveryLocation(companyId, orderId, locId) {
 // Nova narudžbina se pravi PRE zatvaranja stare: ako kreiranje padne, baca se greška i stara
 // ostaje nepotvrđena (naručilac može da proba ponovo), umesto zatvorene narudžbine bez prenosa.
 // Vraća { id, orderNumber } nove narudžbine ili null.
+// Nova narudžbina iz prenosa (manjak pri potvrdi prijema ILI višak preuzete robe pri unosu računa):
+// popunjena kao original (naručilac, "ko je tražio", prioritet). Kreira je isključivo uloga naručilac (firestore.rules).
+export async function createCarryOverOrder(companyId, orderId, carryOver, { actorName }) {
+  const order = await getOrder(companyId, orderId);
+  if (!order) throw new Error("order_not_found");
+  const { orderId: newId, assignFailed } = await submitOrder(companyId, {
+    createdByUid: order.createdByUid, createdByName: order.createdByName,
+    priority: carryOver.priority || order.priority || "standardno",
+    requestedByName: order.requestedByName || "",
+    items: carryOver.items, deliveryLocations: carryOver.deliveryLocations,
+    assignmentMode: carryOver.assignmentMode || "admin_bira",
+    extraFields: { carriedFromOrderId: orderId, carriedFromNumber: order.orderNumber || "", ...(carryOver.extraFields || {}) },
+  }, { assignedTo: carryOver.assignedTo || null, actorName });
+  const newOrder = await getOrder(companyId, newId);
+  return { id: newId, orderNumber: newOrder?.orderNumber || "", assignFailed };
+}
+
 export async function confirmReceipt(companyId, orderId, { actorUid, actorName, carryOver = null }) {
   let created = null;
-  if (carryOver?.items?.length) {
-    const order = await getOrder(companyId, orderId);
-    if (!order) throw new Error("order_not_found");
-    const { orderId: newId, assignFailed } = await submitOrder(companyId, {
-      createdByUid: order.createdByUid, createdByName: order.createdByName,
-      priority: carryOver.priority || order.priority || "standardno",
-      requestedByName: order.requestedByName || "",
-      items: carryOver.items, deliveryLocations: carryOver.deliveryLocations,
-      assignmentMode: carryOver.assignmentMode || "admin_bira",
-      extraFields: { carriedFromOrderId: orderId, carriedFromNumber: order.orderNumber || "" },
-    }, { assignedTo: carryOver.assignedTo || null, actorName });
-    const newOrder = await getOrder(companyId, newId);
-    created = { id: newId, orderNumber: newOrder?.orderNumber || "", assignFailed };
-  }
+  if (carryOver?.items?.length) created = await createCarryOverOrder(companyId, orderId, carryOver, { actorName });
 
   await updateDoc(doc(db, "companies", companyId, "orders", orderId), {
     status: ORDER_STATUS.ZATVORENA, confirmedAt: serverTimestamp(), closedAt: serverTimestamp(), updatedAt: serverTimestamp(),

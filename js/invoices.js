@@ -11,13 +11,14 @@
 // Faza 1: ukupni iznosi sa PDV-om; `lines` (stavke sa cenama) i `matchStatus` su rezervisani za fazu 2.
 // ============================================================================
 import {
-  db, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, serverTimestamp,
+  db, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, getDoc, onSnapshot, query, orderBy, serverTimestamp,
 } from "./firebase-init.js";
 import { logAudit } from "./audit.js";
 import { uploadAttachment } from "./attachments.js";
 import {
   summarizeInvoices, computeInvoiceStatus, isLegacyPurchaseAmount, round2, INVOICE_SOURCE, parseAmount,
 } from "./invoice-logic.js";
+import { purchaseStatusAfterCorrection } from "./invoice-match.js";
 
 const invCol = (c, o) => collection(db, "companies", c, "orders", o, "invoices");
 const orderRef = (c, o) => doc(db, "companies", c, "orders", o);
@@ -41,7 +42,7 @@ async function recalc(companyId, orderId, supplierId) {
 
   const target = supplierId ? purchases.find((p) => p.supplierId === supplierId) : null;
   if (target) {
-    const sum = summarizeInvoices(invoices.filter((i) => i.supplierId === supplierId));
+    const sum = summarizeInvoices(invoices.filter((i) => i.supplierId === supplierId && !i.draft)); // nacrti ne ulaze u iznos
     await updateDoc(purchaseRef(companyId, orderId, target.id), { ...sum, paymentSetAt: serverTimestamp() });
     purchases = purchases.map((p) => (p.id === target.id ? { ...p, ...sum } : p));
   }
@@ -61,9 +62,16 @@ function invoiceDoc(purchase, data, actor) {
     vatRate: data.vatRate ?? null,
     netAmount: round2(parseAmount(data.netAmount)), vatAmount: round2(parseAmount(data.vatAmount)), grossAmount: round2(parseAmount(data.grossAmount)),
     currency: data.currency || "RSD",
-    lines: data.lines || [],               // faza 2: stavke računa (naziv, količina, jedinična cena, rabat, iznos)
-    matchStatus: data.matchStatus || "nije_usaglaseno", // faza 2: usaglašavanje sa stavkama narudžbine
+    lines: data.lines || [],               // stavke računa (naziv, količina, jedinična cena, rabat, PDV, iznos, veza sa artiklom)
+    matchStatus: data.matchStatus || "nije_usaglaseno", // usaglašenost sa stavkama narudžbine
     note: String(data.note || "").trim(),
+    ...(data.lines?.length ? {
+      pricesIncludeVat: !!data.pricesIncludeVat,
+      controlGross: data.controlGross == null || Number.isNaN(Number(data.controlGross)) ? null : round2(data.controlGross),
+      draft: !!data.draft,                          // nacrt: čuva se, ali ne ulazi u iznos nabavke
+      pendingCorrections: data.draft ? (data.pendingCorrections || []) : [],
+      corrections: data.draft ? [] : (data.corrections || []),
+    } : {}),
   };
 }
 const auditParams = (inv, supplierName) => ({ number: inv.number || "—", amount: String(inv.grossAmount), supplier: supplierName || inv.supplierName || "—" });
@@ -101,6 +109,10 @@ export async function updateInvoice(companyId, orderId, invoice, data, actor) {
     currency: d.currency, note: d.note, updatedByUid: actor.uid, updatedByName: actor.name, updatedAt: serverTimestamp(),
   };
   if (invoice.legacy) upd.legacy = false;
+  if (data.lines?.length) {
+    const x = invoiceDoc({ id: invoice.purchaseId, supplierId: invoice.supplierId, supplierName: invoice.supplierName }, data, actor);
+    Object.assign(upd, { lines: x.lines, matchStatus: x.matchStatus, source: data.source || invoice.source, pricesIncludeVat: x.pricesIncludeVat, controlGross: x.controlGross, draft: x.draft, pendingCorrections: x.pendingCorrections, corrections: x.corrections });
+  }
   if (data.file) {
     try {
       upd.attachmentUrl = await uploadAttachment(companyId, orderId, data.file, { type: "racun", uploadedByUid: actor.uid, uploadedByName: actor.name, receiptNumber: d.number });
@@ -129,4 +141,43 @@ export async function setPurchaseNoInvoice(companyId, orderId, purchase, flag, a
     detailsKey: "audit_invoice_none_details", detailsParams: { supplier: purchase.supplierName || "—" },
   });
   return recalc(companyId, orderId, purchase.supplierId);
+}
+
+// ----------------------------------------------------------------------------
+// Račun sa stavkama (faza 2)
+// Potvrda unosa (draft=false) prvo primeni ispravke PREUZETIH količina koje je korisnik izabrao u usaglašavanju
+// (naručene količine se nikad ne menjaju), pa sačuva račun i preračuna nabavku. Nacrt (draft=true) se samo čuva.
+// corrections: [{ itemId, name, from, to }]
+// ----------------------------------------------------------------------------
+export async function saveInvoiceWithLines(companyId, orderId, purchase, data, { editing = null, corrections = [], actor, replaceLegacy = false } = {}) {
+  const applied = [];
+  if (!data.draft) {
+    for (const c of corrections) {
+      const ref = doc(db, "companies", companyId, "orders", orderId, "items", c.itemId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) continue;
+      const cur = snap.data();
+      const to = Number(c.to);
+      if (!(to >= 0)) continue;
+      await updateDoc(ref, {
+        purchasedQty: to, purchaseStatus: purchaseStatusAfterCorrection(cur.purchaseStatus, to),
+        purchaseCorrectedAt: serverTimestamp(), purchaseCorrectedBy: actor.name,
+      });
+      applied.push({ itemId: c.itemId, name: c.name || cur.productName || "", from: Number(cur.purchasedQty) || 0, to });
+      await logAudit(companyId, {
+        action: "item_purchased_corrected", entity: "Items", entityId: c.itemId, actorName: actor.name,
+        detailsKey: "audit_item_corrected_details", detailsParams: { item: c.name || cur.productName || "—", from: String(Number(cur.purchasedQty) || 0), to: String(to), number: data.number || "—" },
+      });
+    }
+  }
+  const payload = { ...data, source: data.source || INVOICE_SOURCE.FAKTURA, corrections: applied };
+  const res = editing
+    ? await updateInvoice(companyId, orderId, editing, payload, actor)
+    : await addInvoice(companyId, orderId, purchase, payload, actor, { replaceLegacy });
+  return { ...res, id: editing?.id || res.id, appliedCorrections: applied };
+}
+
+// Evidencija dodatne narudžbine napravljene za višak preuzete robe
+export async function markInvoiceSurplusOrder(companyId, orderId, invoiceId, orderNumber, orderIdNew) {
+  await updateDoc(doc(invCol(companyId, orderId), invoiceId), { surplusOrderId: orderIdNew || "", surplusOrderNumber: orderNumber || "" });
 }

@@ -3,11 +3,12 @@ import { renderNav } from "./nav.js";
 import { loadLang, t, currentLang } from "./i18n.js";
 import {
   listenOrder, listenOrderItems, listenOrderPurchases, listenDeliveryLocations,
-  acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, deleteOrderItem, deleteOrder, assignOrder,
+  acceptOrder, rejectOrder, setOrderStatus, confirmReceipt, createCarryOverOrder, deleteOrderItem, deleteOrder, assignOrder,
   updateOrderItem, addOrderItem, updateOrderPriority, updateOrderRequestedBy, addOrderDeliveryLocation, removeOrderDeliveryLocation,
 } from "./orders.js";
 import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, calcOrderTotal } from "./purchases.js";
-import { listenInvoices } from "./invoices.js";
+import { listenInvoices, markInvoiceSurplusOrder } from "./invoices.js";
+import { surplusRows } from "./invoice-match.js";
 import { invoiceBlockHtml, bindInvoiceBlocks } from "./invoice-ui.js";
 import { canManageInvoices } from "./invoice-logic.js";
 import { getSupplierLocations, getSuppliers, getSupplierDestinations } from "./suppliers.js";
@@ -493,6 +494,17 @@ function renderPurchasesPanel() {
   const invCtx = {
     companyId, orderId, uid: uidValue, profile, canManage: canManageInvoices(profile, order, uidValue),
     currency: companyCurrency(), money: (a) => formatCurrency(a), lang: currentLang,
+    items,
+    // Dodatnu narudžbinu (za višak preuzete robe) sme da napravi samo uloga naručilac (firestore.rules: create orders)
+    canCreateSurplus: profile.role === "narucilac" && canManageInvoices(profile, order, uidValue),
+    createSurplusOrder: async (rec, purchase, invoiceId) => {
+      const sr = surplusRows(rec, purchase);
+      const decision = await openCarryOverDialog(sr.shortages, { extraItems: sr.synthetic, titleKey: "surplus_modal_title", introKey: "surplus_modal_intro", createKey: "surplus_btn_create", noSkip: true });
+      if (!decision?.carryOver) return null;
+      const created = await createCarryOverOrder(companyId, orderId, { ...decision.carryOver, extraFields: { surplusOfInvoiceId: invoiceId || "" } }, { actorName: profile.name });
+      if (invoiceId) await markInvoiceSurplusOrder(companyId, orderId, invoiceId, created.orderNumber, created.id);
+      return created;
+    },
   };
 
   panel.innerHTML = `<div class="panel-head"><h2>${t("purchases_by_supplier_title")}</h2></div>` + purchases.map((p) => {
@@ -822,8 +834,11 @@ function renderReceiptPanel() {
 // Isporučilac se određuje prema podešavanju firme — isto kao na formi "Nova narudžbina":
 //   automatski -> sistem, admin_bira -> admin, narucilac_bira -> izbor ovde.
 // Vraća: null ("Nazad"), { carryOver: null } (prijem bez nove narudžbine) ili { carryOver: {...} }.
-async function openCarryOverDialog(shortages) {
-  const shortItems = items.filter((i) => shortages.some((s) => s.itemId === i.id));
+// opts (za višak preuzete robe pri unosu računa): extraItems (sintetički artikli bez para u narudžbini),
+// titleKey / introKey / createKey, noSkip (nema "potvrdi bez nove narudžbine").
+async function openCarryOverDialog(shortages, opts = {}) {
+  const pool = opts.extraItems?.length ? items.concat(opts.extraItems) : items;
+  const shortItems = pool.filter((i) => shortages.some((s) => s.itemId === i.id));
   const locsBySupplier = {};
   await Promise.all([...new Set(shortItems.map((i) => i.supplierId))].map(async (sid) => {
     try { locsBySupplier[sid] = await getSupplierLocsCached(sid); } catch (e) { console.error(e); locsBySupplier[sid] = []; }
@@ -831,7 +846,7 @@ async function openCarryOverDialog(shortages) {
   const settings = await getCompanySettings(companyId).catch(() => companySettings);
   const mode = settings?.assignmentMode || "admin_bira";
   const fulfillers = mode === "narucilac_bira" ? await getIsporucioci(companyId).catch(() => []) : [];
-  const draft = buildCarryOverDraft({ items, deliveryLocations, shortages, locsBySupplier });
+  const draft = buildCarryOverDraft({ items: pool, deliveryLocations, shortages, locsBySupplier });
 
   const selectHtml = (cls, options, currentId, withAny) => `<select class="${cls}">${
     (withAny ? [`<option value="any" data-name="" ${currentId === "any" ? "selected" : ""}>${t("any_location")}</option>`] : [])
@@ -866,8 +881,8 @@ async function openCarryOverDialog(shortages) {
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
     <div class="modal-card wide" style="max-width:940px;">
-      <div class="modal-head"><h2>${t("carry_modal_title")}</h2><button type="button" class="icon-btn co-back" title="${escapeHtml(t("cancel"))}">✕</button></div>
-      <p class="muted" style="margin-top:0;">${t("carry_modal_intro", { count: draft.items.length })}</p>
+      <div class="modal-head"><h2>${t(opts.titleKey || "carry_modal_title")}</h2><button type="button" class="icon-btn co-back" title="${escapeHtml(t("cancel"))}">✕</button></div>
+      <p class="muted" style="margin-top:0;">${t(opts.introKey || "carry_modal_intro", { count: draft.items.length })}</p>
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr><th></th><th>${t("item_label")}</th><th>${t("supplier")}</th><th>${t("quantity")}</th><th>${t("pickup_location_label")}</th><th>${t("delivery_label")}</th></tr></thead>
@@ -881,8 +896,8 @@ async function openCarryOverDialog(shortages) {
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost co-back">${t("carry_btn_back")}</button>
-        <button type="button" class="btn btn-ghost co-skip">${t("carry_btn_skip")}</button>
-        <button type="button" class="btn btn-primary co-create" ${mode === "narucilac_bira" && !fulfillers.length ? "disabled" : ""}>${t("carry_btn_create")}</button>
+        ${opts.noSkip ? "" : `<button type="button" class="btn btn-ghost co-skip">${t("carry_btn_skip")}</button>`}
+        <button type="button" class="btn btn-primary co-create" ${mode === "narucilac_bira" && !fulfillers.length ? "disabled" : ""}>${t(opts.createKey || "carry_btn_create")}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -890,7 +905,7 @@ async function openCarryOverDialog(shortages) {
   return new Promise((resolve) => {
     const close = (result) => { overlay.remove(); resolve(result); };
     overlay.querySelectorAll(".co-back").forEach((b) => b.addEventListener("click", () => close(null)));
-    overlay.querySelector(".co-skip").addEventListener("click", () => close({ carryOver: null }));
+    overlay.querySelector(".co-skip")?.addEventListener("click", () => close({ carryOver: null }));
     overlay.querySelector(".co-create").addEventListener("click", () => {
       const readOpt = (sel) => (sel ? { id: sel.value, name: sel.options[sel.selectedIndex]?.dataset.name || "" } : null);
       const rows = draft.items.map((d, idx) => {

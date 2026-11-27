@@ -7,7 +7,8 @@
 import { t } from "./i18n.js";
 import { escapeHtml, toast } from "./utils.js";
 import { getISO, initDatepickers } from "./datepicker.js";
-import { addInvoice, updateInvoice, deleteInvoice, setPurchaseNoInvoice } from "./invoices.js";
+import { addInvoice, updateInvoice, deleteInvoice, setPurchaseNoInvoice, saveInvoiceWithLines } from "./invoices.js";
+import { openInvoiceLinesModal } from "./invoice-lines-ui.js";
 import {
   VAT_RATES, INVOICE_SOURCE, fromGross, fromNet, round2, parseAmount, validateInvoice, isLegacyPurchaseAmount,
 } from "./invoice-logic.js";
@@ -18,16 +19,20 @@ const fmtDate = (iso, lang) => {
   return isNaN(d) ? iso : d.toLocaleDateString(lang === "en" ? "en-GB" : "sr-RS", { day: "2-digit", month: "2-digit", year: "numeric" });
 };
 
-// ctx: { companyId, orderId, uid, profile, canManage, currency, money(amount), lang }
+// ctx: { companyId, orderId, uid, profile, canManage, currency, money(amount), lang,
+//        items (artikli narudžbine), canCreateSurplus, createSurplusOrder(rec, purchase, invoiceId) }
 export function invoiceBlockHtml(purchase, invoices, ctx) {
   const mine = invoices.filter((i) => i.supplierId === purchase.supplierId);
   const legacy = isLegacyPurchaseAmount(purchase) && !mine.length;
   const canDel = (i) => ctx.canManage && (ctx.profile.role === "admin" || i.createdByUid === ctx.uid);
-  const sum = (k) => round2(mine.reduce((s, i) => s + (Number(i[k]) || 0), 0));
+  const confirmed = mine.filter((i) => !i.draft);
+  const sum = (k) => round2(confirmed.reduce((s, i) => s + (Number(i[k]) || 0), 0));
 
   const rows = mine.map((i) => `
     <tr data-invoice="${i.id}">
-      <td>${escapeHtml(i.number || "—")}${i.legacy ? ` <span class="muted" style="font-size:11px;">(${t("inv_legacy_tag")})</span>` : ""}</td>
+      <td>${escapeHtml(i.number || "—")}${i.legacy ? ` <span class="muted" style="font-size:11px;">(${t("inv_legacy_tag")})</span>` : ""}
+        ${i.draft ? ` <span class="badge badge-gray">${t("inv_draft_badge")}</span>` : ""}
+        ${i.lines?.length ? `<div class="muted" style="font-size:11px;">${t("inv_lines_count", { n: i.lines.length })} · ${i.matchStatus === "usaglaseno" ? "✅ " + t("inv_match_ok") : i.matchStatus === "usaglaseno_uz_razlike" ? "⚠ " + t("inv_match_diff") : t("inv_match_no")}${i.surplusOrderNumber ? ` · ${t("inv_surplus_order", { number: escapeHtml(i.surplusOrderNumber) })}` : ""}</div>` : ""}</td>
       <td>${fmtDate(i.date, ctx.lang)}</td>
       <td class="mono">${ctx.money(i.netAmount)}</td>
       <td class="mono">${ctx.money(i.vatAmount)}${i.vatRate != null ? ` <span class="muted" style="font-size:11px;">(${i.vatRate}%)</span>` : ""}</td>
@@ -52,14 +57,15 @@ export function invoiceBlockHtml(purchase, invoices, ctx) {
         <strong>🧾 ${t("invoices_title")}</strong>
         ${empty && !noInvoiceNote ? `<span class="badge badge-amber">${t("awaiting_invoice_badge")}</span>` : ""}
         ${noInvoiceNote ? `<span class="badge badge-gray">${t("inv_none_badge")}</span>` : ""}
-        ${ctx.canManage ? `<button type="button" class="btn btn-sm btn-primary" data-inv-add="${purchase.id}">＋ ${t("inv_add_btn")}</button>` : ""}
+        ${ctx.canManage ? `<button type="button" class="btn btn-sm btn-primary" data-inv-add="${purchase.id}">＋ ${t("inv_add_btn")}</button>
+        <button type="button" class="btn btn-sm btn-outline" data-inv-add-lines="${purchase.id}">🧾 ${t("inv_add_lines_btn")}</button>` : ""}
         ${ctx.canManage && empty ? `<label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-inv-none="${purchase.id}" ${purchase.noInvoice ? "checked" : ""} /> ${t("inv_none_label")}</label>` : ""}
       </div>
       ${empty ? "" : `
       <div class="table-wrap"><table class="data-table">
         <thead><tr><th>${t("receipt_number_label")}</th><th>${t("receipt_date_label")}</th><th>${t("inv_net")}</th><th>${t("inv_vat")}</th><th>${t("inv_gross")}</th><th>${t("inv_entered_by")}</th><th></th></tr></thead>
         <tbody>${rows}${legacyRow}</tbody>
-        ${mine.length > 1 ? `<tfoot><tr><td colspan="2" style="text-align:right;"><strong>${t("inv_sum")}:</strong></td><td class="mono">${ctx.money(sum("netAmount"))}</td><td class="mono">${ctx.money(sum("vatAmount"))}</td><td class="mono"><strong>${ctx.money(sum("grossAmount"))}</strong></td><td colspan="2"></td></tr></tfoot>` : ""}
+        ${confirmed.length > 1 ? `<tfoot><tr><td colspan="2" style="text-align:right;"><strong>${t("inv_sum")}:</strong></td><td class="mono">${ctx.money(sum("netAmount"))}</td><td class="mono">${ctx.money(sum("vatAmount"))}</td><td class="mono"><strong>${ctx.money(sum("grossAmount"))}</strong></td><td colspan="2"></td></tr></tfoot>` : ""}
       </table></div>`}
     </div>`;
 }
@@ -73,6 +79,15 @@ export function bindInvoiceBlocks(panel, purchases, invoices, ctx) {
     const p = purchaseById(b.dataset.invAdd);
     openInvoiceModal({ purchase: p, invoices, ctx, onSave: async (data) => done(await addInvoice(ctx.companyId, ctx.orderId, p, data, actor), "toast_invoice_saved") });
   }));
+  const linesSave = (p, editing) => async (data, { corrections }) => {
+    const res = await saveInvoiceWithLines(ctx.companyId, ctx.orderId, p, data, { editing, corrections, actor });
+    done(res, data.draft ? "toast_invoice_draft_saved" : "toast_invoice_saved");
+    return res;
+  };
+  panel.querySelectorAll("[data-inv-add-lines]").forEach((b) => b.addEventListener("click", () => {
+    const p = purchaseById(b.dataset.invAddLines);
+    openInvoiceLinesModal({ purchase: p, invoices, ctx, onSave: linesSave(p, null) });
+  }));
   panel.querySelectorAll("[data-inv-legacy]").forEach((b) => b.addEventListener("click", () => {
     const p = purchaseById(b.closest(".invoices-block").dataset.purchase);
     openInvoiceModal({
@@ -84,6 +99,7 @@ export function bindInvoiceBlocks(panel, purchases, invoices, ctx) {
   panel.querySelectorAll("[data-inv-edit]").forEach((b) => b.addEventListener("click", () => {
     const inv = invoices.find((i) => i.id === b.dataset.invEdit);
     const p = purchases.find((x) => x.supplierId === inv.supplierId) || { id: inv.purchaseId, supplierId: inv.supplierId, supplierName: inv.supplierName };
+    if (inv.lines?.length) { openInvoiceLinesModal({ purchase: p, invoices, ctx, editing: inv, onSave: linesSave(p, inv) }); return; }
     openInvoiceModal({
       purchase: p, invoices, ctx, editing: inv,
       initial: { number: inv.number, date: inv.date, gross: inv.grossAmount, net: inv.netAmount, vat: inv.vatAmount, vatRate: inv.vatRate, note: inv.note },

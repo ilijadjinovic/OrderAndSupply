@@ -39,8 +39,34 @@ Svaka izmena ide u audit log (`invoice_added / invoice_updated / invoice_deleted
 - Pravila za `purchases` i `items` i dalje dozvoljavaju pisanje svakom članu firme (ograničenje po ulozi važi za račune).
 - Lista „sve narudžbine“ sa starije, učitane strane ne osvežava oznaku uživo dok se strana ne učita ponovo.
 
+## Faza 2 — račun sa stavkama i usaglašavanje
+U bloku **Računi** uz „Dodaj račun“ (samo ukupan iznos) postoji **„Račun sa stavkama“**.
+
+**Stavke računa** (`lines` u dokumentu računa): naziv, šifra, količina, jedinica, jedinična cena, rabat %, PDV %,
+iznos bez PDV-a i sa PDV-om. Iznos stavke se računa iz količine, cene i rabata, a može i ručno da se upiše „kako piše
+na računu“ (zbog zaokruživanja). Opcija „Cene na računu su sa PDV-om“ je za račune sa cenama sa PDV-om (fiskalni).
+Zbir stavki (osnovica, PDV po stopama, ukupno) puni zaglavlje računa; polje „Ukupno sa fakture (kontrola)“ pokazuje
+razliku ako se zbir ne slaže sa fakturom.
+
+**Veza sa narudžbinom** (po stavci računa):
+- upareno sa artiklom iz narudžbine (ručno, **„Automatski upari“** po šifri/nazivu, ili **„Popuni iz narudžbine“**)
+- **„nema svog para“** → mora se rešiti: *dodatni trošak* (dostava, ambalaža…) ili *višak* (preuzeto, a nije naručeno)
+
+**Usaglašavanje po artiklu**: naručeno · preuzeto · na računu, sa statusom: poklapa se / na računu manje / na računu
+više / nema na računu.
+- **Naručene količine se nikad ne menjaju.**
+- **„Ispravi preuzeto → X“** je predlog: menja samo preuzetu količinu i status artikla (kupljeno / nije pronađeno), i to
+  **tek kad se unos potvrdi**; svaka ispravka ide u audit log (`item_purchased_corrected`) i u račun (`corrections`).
+- **Višak** (preuzeto preko naručenog i stavke „višak“): opcija **dodatne narudžbine** sa unapred popunjenim stavkama.
+  Pošto narudžbine kreira samo naručilac (firestore.rules), opciju vidi uloga naručilac; ostali dobiju napomenu.
+- **Nacrt**: račun može da se sačuva kao nacrt (ne ulazi u iznos nabavke ni u status „Čeka račun“) i da se kasnije
+  potvrdi. **„Potvrdi unos“** traži da su sve stavke upareno ili rešene.
+- `matchStatus`: `usaglaseno` / `usaglaseno_uz_razlike` / `nije_usaglaseno`.
+
+Fajlovi: `invoice-lines.js`, `invoice-match.js` (čista logika), `invoice-lines-ui.js` (ekran), `invoices.js`
+(`saveInvoiceWithLines`), testovi `tests/invoice-lines.test.mjs`.
+
 ## Sledeće faze
-2. Stavke računa (cena, rabat, iznos) + usaglašavanje sa stavkama narudžbine („nema svog para“, višak, manjak;
-   naručene količine se ne menjaju).
-3. Skeniranje QR fiskalnog računa (poseban Cloudflare Worker za ovu app).
-4. Izveštaji po računima.
+3. Skeniranje QR fiskalnog računa (poseban Cloudflare Worker za ovu app) — stavke ulaze u isti ekran usaglašavanja
+   (`source: fiskalni_qr`, `pricesIncludeVat: true`).
+4. Izveštaji po računima (trošak po artiklu/dobavljaču, cena kroz vreme, razlike naručeno/fakturisano).
