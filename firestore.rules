@@ -239,6 +239,11 @@ service cloud.firestore {
         allow write: if isNarucilacOf(companyId) || isAdminOf(companyId);
       }
 
+      // Evidencija upotrebe fiskalnih računa (PFR) — zaštita od slučajnog duplog unosa (upozorenje u aplikaciji)
+      match /fiscalReceipts/{pfrId} {
+        allow read, write: if isCompanyMember(companyId);
+      }
+
       // --- Narudžbine + sve podkolekcije ---
       // Napomena: svaka od tri uloge (admin, naručilac, isporučilac) legitimno menja
       // stavke/nabavke/reklamacije narudžbine kroz svoj deo toka, pa se pisanje ovde

@@ -4,11 +4,20 @@
 //  Prima link iz QR koda (suf.purs.gov.rs/v/?vl=...), preuzima račun
 //  sa poreske uprave i vraća JSON sa podacima za formu za gorivo.
 //
+//  Jedan Worker služi za VIŠE aplikacija (FleetManager, OrderAndSupply, ...).
+//
 //  PROMENLJIVE (Settings → Variables and Secrets):
-//    FIREBASE_PROJECT_ID  npr. fleet-manager-cfd6c
-//    ALLOWED_ORIGINS      adrese aplikacije, odvojene zarezom,
-//                         npr. https://fleet-manager-cfd6c.web.app
-//                         (bez kose crte na kraju i bez putanje)
+//    FIREBASE_PROJECT_ID  Firebase projekti svih aplikacija, odvojeni zarezom,
+//                         npr. fleet-manager-cfd6c,orderandsupply
+//                         (token iz bilo kog od ovih projekata je dozvoljen)
+//    ALLOWED_ORIGINS      adrese aplikacija, odvojene zarezom,
+//                         npr. https://vase-ime.github.io
+//                         (bez kose crte na kraju i bez putanje repozitorijuma)
+//
+//  Odgovor (dopuna za PDV; stara polja su ista, pa FleetManager radi kao ranije):
+//    items[].taxLabel / vatRate / vatSource   oznaka poreske stope, stopa (%) i odakle je stopa
+//    taxes[]      poreska rekapitulacija sa računa: { label, name, rate, tax }
+//    totalTax     ukupan porez sa računa (ako ga ima)
 // ============================================================
 
 const SUF_HOST = "suf.purs.gov.rs";
@@ -54,7 +63,8 @@ export default {
     try {
       const auth = request.headers.get("Authorization") || "";
       if (!auth.startsWith("Bearer ")) throw new Error("no token");
-      await verifyFirebaseToken(auth.slice(7), env.FIREBASE_PROJECT_ID);
+      const projects = String(env.FIREBASE_PROJECT_ID || "").split(",").map((x) => x.trim()).filter(Boolean);
+      await verifyFirebaseToken(auth.slice(7), projects);
     } catch {
       return json({ ok: false, error: "unauthorized" }, 401, cors);
     }
@@ -125,8 +135,9 @@ function b64urlToBytes(s) {
 }
 const b64urlToString = (s) => new TextDecoder().decode(b64urlToBytes(s));
 
-async function verifyFirebaseToken(token, projectId) {
-  if (!projectId) throw new Error("no project id");
+async function verifyFirebaseToken(token, projectIds) {
+  const list = Array.isArray(projectIds) ? projectIds : [projectIds].filter(Boolean);
+  if (!list.length) throw new Error("no project id");
   const parts = token.split(".");
   if (parts.length !== 3) throw new Error("format");
   const [h, p, s] = parts;
@@ -135,8 +146,8 @@ async function verifyFirebaseToken(token, projectId) {
   if (header.alg !== "RS256" || !header.kid) throw new Error("alg");
 
   const now = Math.floor(Date.now() / 1000);
-  if (payload.aud !== projectId) throw new Error("aud");
-  if (payload.iss !== `https://securetoken.google.com/${projectId}`) throw new Error("iss");
+  if (!list.includes(payload.aud)) throw new Error("aud");
+  if (payload.iss !== `https://securetoken.google.com/${payload.aud}`) throw new Error("iss");
   if (!payload.sub) throw new Error("sub");
   if (!(payload.exp > now)) throw new Error("expired");
   if (payload.iat > now + 300) throw new Error("iat");
@@ -204,7 +215,9 @@ async function loadReceipt(rawUrl, sufUrl) {
   if (!receipt || !receipt.items?.length) {
     return { ok: false, error: journal ? "journal_unparsed" : "journal_not_found", diag };
   }
-  return { ok: true, source, receipt: finalize(receipt) };
+  diag.taxRecapRows = receipt.taxes?.length || 0;
+  diag.itemsWithoutVat = receipt.items.filter((it) => resolveVat(it.taxLabel, receipt.taxes).rate == null).length;
+  return { ok: true, source, receipt: finalize(receipt), diag };
 }
 
 function grab(html, regexes) {
@@ -262,7 +275,8 @@ async function loadSpecifications(html, rawUrl, cookies, diag) {
           const unitPrice = Number(it?.unitPrice);
           const total = Number(it?.totalAmount ?? it?.total);
           if (!name || !(quantity > 0)) return null;
-          return { name: cleanItemName(name), tariff: tariffOf(name), quantity, unitPrice, total };
+          const lab = Array.isArray(it?.labels) ? it.labels[0] : it?.label;
+          return { name: cleanItemName(name), tariff: tariffOf(name), taxLabel: normLabel(lab) || taxLabelOf(name), quantity, unitPrice, total };
         })
         .filter(Boolean)
     : null;
@@ -323,6 +337,49 @@ function titleCase(s) {
 }
 
 const parseNum = (s) => Number(String(s).replace(/\./g, "").replace(",", "."));
+
+// ── PDV: oznake poreskih stopa ─────────────────────────────────
+// Posle pretvaranja u latinicu: Ђ→Đ, Е→E, Г→G, А→A. Stopa se PRVO uzima iz poreske rekapitulacije
+// samog računa (oznaka → stopa); ova tabela je samo rezerva ako rekapitulacija nije pročitana.
+const TAX_TABLE = { "Đ": 20, E: 10, G: 0, A: 0 };
+
+// Oznaka na kraju naziva stavke: "... (Ђ )" → "Đ"
+function taxLabelOf(name) {
+  const m = /\(\s*(\p{L})\s*\)\s*$/u.exec(toLatin(name));
+  return m ? m[1].toUpperCase() : null;
+}
+const normLabel = (l) => {
+  const x = toLatin(String(l ?? "").trim()).toUpperCase();
+  return /^\p{L}$/u.test(x) ? x : null;
+};
+
+// Redovi poreske rekapitulacije: "Đ  O-PDV  20,00%  2.000,00" i "Ukupan iznos poreza: 2.000,00"
+const RECAP_RE = /^\s*(\p{L})\s+(\S.*?)\s+(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s+(-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?)\s*$/u;
+const TOTAL_TAX_RE = /Ukupan\s+(?:iznos\s+)?porez[a]?\s*:?\s*(-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?)/i;
+function parseTaxRecap(lines) {
+  const taxes = [];
+  let totalTax = null;
+  for (const raw of lines) {
+    const l = toLatin(raw).trim();
+    if (!l) continue;
+    const m = RECAP_RE.exec(l);
+    if (m) {
+      taxes.push({ label: m[1].toUpperCase(), name: m[2].trim(), rate: Number(m[3].replace(",", ".")), tax: parseNum(m[4]) });
+      continue;
+    }
+    const t = TOTAL_TAX_RE.exec(l);
+    if (t) totalTax = parseNum(t[1]);
+  }
+  return { taxes, totalTax };
+}
+
+function resolveVat(label, taxes) {
+  if (!label) return { rate: null, source: null };
+  const rec = (taxes || []).find((t) => t.label === label);
+  if (rec && Number.isFinite(rec.rate)) return { rate: rec.rate, source: "recap" };
+  if (Object.prototype.hasOwnProperty.call(TAX_TABLE, label)) return { rate: TAX_TABLE[label], source: "table" };
+  return { rate: null, source: null };
+}
 
 // ── Žurnal ─────────────────────────────────────────────────────
 function extractJournal(src) {
@@ -399,7 +456,7 @@ function parseJournal(raw) {
     const [unitPrice, quantity, total] = [parseNum(a), parseNum(b), parseNum(c)];
     if (Math.abs(unitPrice * quantity - total) > Math.max(0.05, Math.abs(total) * 0.01)) continue;
     const name = tokens.slice(nameStart, i).join(" ");
-    items.push({ name: cleanItemName(name), tariff: tariffOf(name), unitPrice, quantity, total });
+    items.push({ name: cleanItemName(name), tariff: tariffOf(name), taxLabel: taxLabelOf(name), unitPrice, quantity, total });
     nameStart = i + 3;
     i += 2;
   }
@@ -416,7 +473,8 @@ function parseJournal(raw) {
   const pfrM = /PFR broj ra[cč]una\s*:\s*([A-Z0-9]{8}-[A-Z0-9]{8}-)([\d\s]+?)\s*\n\s*(?:Broja|[=\-])/i.exec(text);
   const pfr = pfrM ? pfrM[1] + pfrM[2].replace(/\s+/g, "") : null;
 
-  return { pib, companyRaw, object, address, city, total, time, pfr, items };
+  const recap = parseTaxRecap(lines.slice(iTotal));
+  return { pib, companyRaw, object, address, city, total, time, pfr, items, taxes: recap.taxes, totalTax: recap.totalTax };
 }
 
 // Rezerva: podaci sa same stranice računa (labele) + stavke iz specifikacije
@@ -439,7 +497,9 @@ function parsePage(pageText, items) {
   const pfr = after(/^Zatra[zž]io - Potpisao - Broja/i);
 
   const tm = timeS && /(\d{1,2})\.(\d{1,2})\.(\d{4})\.?\s+(\d{1,2}):(\d{2}):(\d{2})/.exec(timeS);
+  const recap = parseTaxRecap(lines);
   return {
+    taxes: recap.taxes, totalTax: recap.totalTax,
     pib: pib && /^\d{9}$/.test(pib) ? pib : null,
     companyRaw: null,
     object,
@@ -489,13 +549,21 @@ function finalize(r) {
     pfr: r.pfr,
     time: r.time,
     total: r.total,
-    items: r.items.map((it) => ({
-      name: it.name,
-      tariff: it.tariff,
-      quantity: it.quantity,
-      unitPrice: it.unitPrice,
-      total: it.total,
-      fuelType: classifyFuel(it.name, it.tariff),
-    })),
+    taxes: r.taxes || [],
+    totalTax: r.totalTax ?? null,
+    items: r.items.map((it) => {
+      const v = resolveVat(it.taxLabel, r.taxes);
+      return {
+        name: it.name,
+        tariff: it.tariff,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        total: it.total,
+        fuelType: classifyFuel(it.name, it.tariff),
+        taxLabel: it.taxLabel || null,
+        vatRate: v.rate,
+        vatSource: v.source,
+      };
+    }),
   };
 }
