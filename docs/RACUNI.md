@@ -66,7 +66,23 @@ više / nema na računu.
 Fajlovi: `invoice-lines.js`, `invoice-match.js` (čista logika), `invoice-lines-ui.js` (ekran), `invoices.js`
 (`saveInvoiceWithLines`), testovi `tests/invoice-lines.test.mjs`.
 
+## Faza 3 — fiskalni račun (QR)
+U ekranu „Račun sa stavkama“ (i u bloku Računi) postoji **„📷 Skeniraj QR“**; dostupno je svakome ko sme da unosi račune
+(isporučilac, naručilac, admin).
+
+- **Kamera** (ugrađeni BarcodeDetector, a gde ga nema lokalna biblioteka `js/vendor/jsQR.js`, Apache-2.0) ili
+  **nalepljen link** iz QR koda (npr. skeniran drugim uređajem i prekopiran).
+- Račun se preuzima preko Cloudflare Worker-a (`docs/WORKER.md`). Popunjava se: broj računa (= PFR), datum, stavke
+  (cene **sa PDV-om**, stopa po stavci), kontrolni zbir; `source: fiskalni_qr`, `fiscal` (PFR, prodavac, rekapitulacija).
+- Dalje ide isti tok kao za fakturu: automatsko uparivanje, „nema svog para“, ispravka preuzetog, nacrt, potvrda.
+- **PDV**: stopa dolazi iz poreske rekapitulacije računa (rezerva: Đ 20, E 10, G 0, A 0). Stavka sa nepoznatom stopom
+  ima izbor „?“ i ne može da se potvrdi dok se stopa ne izabere. Ukupan porez sa računa se poredi sa PDV-om iz stavki.
+- **Duplikati**: evidencija `companies/{c}/fiscalReceipts/{PFR}` (`uses[invoiceId]`). Pri ponovnom učitavanju istog računa
+  korisnik dobija upozorenje sa spiskom gde je već unet i može da potvrdi (isti račun se deli između narudžbina; obrišite
+  stavke koje se ne odnose na ovu narudžbinu). Tada se kontrolni zbir ne popunjava. Brisanje računa briše i evidenciju.
+- Podešavanje: `js/receipt-config.js` (adresa Worker-a). Pravila: `fiscalReceipts` u `firestore.rules`.
+
+Testovi: `tests/fiscal-logic.test.mjs`, `tests/worker.test.mjs`, `tests/ui-smoke.mjs` (potreban `npm i jsdom`).
+
 ## Sledeće faze
-3. Skeniranje QR fiskalnog računa (poseban Cloudflare Worker za ovu app) — stavke ulaze u isti ekran usaglašavanja
-   (`source: fiskalni_qr`, `pricesIncludeVat: true`).
 4. Izveštaji po računima (trošak po artiklu/dobavljaču, cena kroz vreme, razlike naručeno/fakturisano).

@@ -9,6 +9,7 @@ import {
 import { finishPurchase, markItemPurchased, markItemNotFound, markItemSubstitute, calcOrderTotal } from "./purchases.js";
 import { listenInvoices, markInvoiceSurplusOrder } from "./invoices.js";
 import { surplusRows } from "./invoice-match.js";
+import { fetchReceipt, getReceiptUsage, scanningConfigured } from "./fiscal.js";
 import { invoiceBlockHtml, bindInvoiceBlocks } from "./invoice-ui.js";
 import { canManageInvoices } from "./invoice-logic.js";
 import { getSupplierLocations, getSuppliers, getSupplierDestinations } from "./suppliers.js";
@@ -494,7 +495,8 @@ function renderPurchasesPanel() {
   const invCtx = {
     companyId, orderId, uid: uidValue, profile, canManage: canManageInvoices(profile, order, uidValue),
     currency: companyCurrency(), money: (a) => formatCurrency(a), lang: currentLang,
-    items,
+    items, orderNumber: order.orderNumber,
+    scanConfigured: scanningConfigured(), fetchReceipt, getReceiptUsage: (pfr) => getReceiptUsage(companyId, pfr),
     // Dodatnu narudžbinu (za višak preuzete robe) sme da napravi samo uloga naručilac (firestore.rules: create orders)
     canCreateSurplus: profile.role === "narucilac" && canManageInvoices(profile, order, uidValue),
     createSurplusOrder: async (rec, purchase, invoiceId) => {

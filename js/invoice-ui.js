@@ -20,7 +20,8 @@ const fmtDate = (iso, lang) => {
 };
 
 // ctx: { companyId, orderId, uid, profile, canManage, currency, money(amount), lang,
-//        items (artikli narudžbine), canCreateSurplus, createSurplusOrder(rec, purchase, invoiceId) }
+//        items (artikli narudžbine), canCreateSurplus, createSurplusOrder(rec, purchase, invoiceId),
+//        orderNumber, scanConfigured, fetchReceipt(url), getReceiptUsage(pfr) }
 export function invoiceBlockHtml(purchase, invoices, ctx) {
   const mine = invoices.filter((i) => i.supplierId === purchase.supplierId);
   const legacy = isLegacyPurchaseAmount(purchase) && !mine.length;
@@ -32,7 +33,7 @@ export function invoiceBlockHtml(purchase, invoices, ctx) {
     <tr data-invoice="${i.id}">
       <td>${escapeHtml(i.number || "—")}${i.legacy ? ` <span class="muted" style="font-size:11px;">(${t("inv_legacy_tag")})</span>` : ""}
         ${i.draft ? ` <span class="badge badge-gray">${t("inv_draft_badge")}</span>` : ""}
-        ${i.lines?.length ? `<div class="muted" style="font-size:11px;">${t("inv_lines_count", { n: i.lines.length })} · ${i.matchStatus === "usaglaseno" ? "✅ " + t("inv_match_ok") : i.matchStatus === "usaglaseno_uz_razlike" ? "⚠ " + t("inv_match_diff") : t("inv_match_no")}${i.surplusOrderNumber ? ` · ${t("inv_surplus_order", { number: escapeHtml(i.surplusOrderNumber) })}` : ""}</div>` : ""}</td>
+        ${i.lines?.length ? `<div class="muted" style="font-size:11px;">${t("inv_lines_count", { n: i.lines.length })} · ${i.matchStatus === "usaglaseno" ? "✅ " + t("inv_match_ok") : i.matchStatus === "usaglaseno_uz_razlike" ? "⚠ " + t("inv_match_diff") : t("inv_match_no")}${i.surplusOrderNumber ? ` · ${t("inv_surplus_order", { number: escapeHtml(i.surplusOrderNumber) })}` : ""}${i.fiscal?.pfr ? ` · 🧾 ${t("fiscal_badge")}` : ""}</div>` : ""}</td>
       <td>${fmtDate(i.date, ctx.lang)}</td>
       <td class="mono">${ctx.money(i.netAmount)}</td>
       <td class="mono">${ctx.money(i.vatAmount)}${i.vatRate != null ? ` <span class="muted" style="font-size:11px;">(${i.vatRate}%)</span>` : ""}</td>
@@ -58,7 +59,8 @@ export function invoiceBlockHtml(purchase, invoices, ctx) {
         ${empty && !noInvoiceNote ? `<span class="badge badge-amber">${t("awaiting_invoice_badge")}</span>` : ""}
         ${noInvoiceNote ? `<span class="badge badge-gray">${t("inv_none_badge")}</span>` : ""}
         ${ctx.canManage ? `<button type="button" class="btn btn-sm btn-primary" data-inv-add="${purchase.id}">＋ ${t("inv_add_btn")}</button>
-        <button type="button" class="btn btn-sm btn-outline" data-inv-add-lines="${purchase.id}">🧾 ${t("inv_add_lines_btn")}</button>` : ""}
+        <button type="button" class="btn btn-sm btn-outline" data-inv-add-lines="${purchase.id}">🧾 ${t("inv_add_lines_btn")}</button>
+        <button type="button" class="btn btn-sm btn-outline" data-inv-scan="${purchase.id}">📷 ${t("scan_btn")}</button>` : ""}
         ${ctx.canManage && empty ? `<label class="muted" style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-inv-none="${purchase.id}" ${purchase.noInvoice ? "checked" : ""} /> ${t("inv_none_label")}</label>` : ""}
       </div>
       ${empty ? "" : `
@@ -80,13 +82,17 @@ export function bindInvoiceBlocks(panel, purchases, invoices, ctx) {
     openInvoiceModal({ purchase: p, invoices, ctx, onSave: async (data) => done(await addInvoice(ctx.companyId, ctx.orderId, p, data, actor), "toast_invoice_saved") });
   }));
   const linesSave = (p, editing) => async (data, { corrections }) => {
-    const res = await saveInvoiceWithLines(ctx.companyId, ctx.orderId, p, data, { editing, corrections, actor });
+    const res = await saveInvoiceWithLines(ctx.companyId, ctx.orderId, p, data, { editing, corrections, actor, orderNumber: ctx.orderNumber || "" });
     done(res, data.draft ? "toast_invoice_draft_saved" : "toast_invoice_saved");
     return res;
   };
   panel.querySelectorAll("[data-inv-add-lines]").forEach((b) => b.addEventListener("click", () => {
     const p = purchaseById(b.dataset.invAddLines);
     openInvoiceLinesModal({ purchase: p, invoices, ctx, onSave: linesSave(p, null) });
+  }));
+  panel.querySelectorAll("[data-inv-scan]").forEach((b) => b.addEventListener("click", () => {
+    const p = purchaseById(b.dataset.invScan);
+    openInvoiceLinesModal({ purchase: p, invoices, ctx, onSave: linesSave(p, null), autoScan: true });
   }));
   panel.querySelectorAll("[data-inv-legacy]").forEach((b) => b.addEventListener("click", () => {
     const p = purchaseById(b.closest(".invoices-block").dataset.purchase);

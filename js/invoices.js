@@ -19,6 +19,7 @@ import {
   summarizeInvoices, computeInvoiceStatus, isLegacyPurchaseAmount, round2, INVOICE_SOURCE, parseAmount,
 } from "./invoice-logic.js";
 import { purchaseStatusAfterCorrection } from "./invoice-match.js";
+import { registerReceiptUse, unregisterReceiptUse } from "./fiscal.js";
 
 const invCol = (c, o) => collection(db, "companies", c, "orders", o, "invoices");
 const orderRef = (c, o) => doc(db, "companies", c, "orders", o);
@@ -65,6 +66,7 @@ function invoiceDoc(purchase, data, actor) {
     lines: data.lines || [],               // stavke računa (naziv, količina, jedinična cena, rabat, PDV, iznos, veza sa artiklom)
     matchStatus: data.matchStatus || "nije_usaglaseno", // usaglašenost sa stavkama narudžbine
     note: String(data.note || "").trim(),
+    ...(data.fiscal ? { fiscal: data.fiscal } : {}),   // fiskalni račun (QR): PFR, vreme, prodavac, poreska rekapitulacija
     ...(data.lines?.length ? {
       pricesIncludeVat: !!data.pricesIncludeVat,
       controlGross: data.controlGross == null || Number.isNaN(Number(data.controlGross)) ? null : round2(data.controlGross),
@@ -111,7 +113,7 @@ export async function updateInvoice(companyId, orderId, invoice, data, actor) {
   if (invoice.legacy) upd.legacy = false;
   if (data.lines?.length) {
     const x = invoiceDoc({ id: invoice.purchaseId, supplierId: invoice.supplierId, supplierName: invoice.supplierName }, data, actor);
-    Object.assign(upd, { lines: x.lines, matchStatus: x.matchStatus, source: data.source || invoice.source, pricesIncludeVat: x.pricesIncludeVat, controlGross: x.controlGross, draft: x.draft, pendingCorrections: x.pendingCorrections, corrections: x.corrections });
+    Object.assign(upd, { lines: x.lines, matchStatus: x.matchStatus, source: data.source || invoice.source, fiscal: data.fiscal ?? invoice.fiscal ?? null, pricesIncludeVat: x.pricesIncludeVat, controlGross: x.controlGross, draft: x.draft, pendingCorrections: x.pendingCorrections, corrections: x.corrections });
   }
   if (data.file) {
     try {
@@ -129,6 +131,7 @@ export async function updateInvoice(companyId, orderId, invoice, data, actor) {
 
 export async function deleteInvoice(companyId, orderId, invoice, actor) {
   await deleteDoc(doc(invCol(companyId, orderId), invoice.id));
+  if (invoice.fiscal?.pfr) { try { await unregisterReceiptUse(companyId, invoice.fiscal.pfr, invoice.id); } catch (e) { console.error(e); } }
   await logAudit(companyId, { action: "invoice_deleted", entity: "Invoices", entityId: invoice.id, actorName: actor.name, detailsKey: "audit_invoice_details", detailsParams: auditParams(invoice) });
   return recalc(companyId, orderId, invoice.supplierId);
 }
@@ -149,7 +152,7 @@ export async function setPurchaseNoInvoice(companyId, orderId, purchase, flag, a
 // (naručene količine se nikad ne menjaju), pa sačuva račun i preračuna nabavku. Nacrt (draft=true) se samo čuva.
 // corrections: [{ itemId, name, from, to }]
 // ----------------------------------------------------------------------------
-export async function saveInvoiceWithLines(companyId, orderId, purchase, data, { editing = null, corrections = [], actor, replaceLegacy = false } = {}) {
+export async function saveInvoiceWithLines(companyId, orderId, purchase, data, { editing = null, corrections = [], actor, replaceLegacy = false, orderNumber = "" } = {}) {
   const applied = [];
   if (!data.draft) {
     for (const c of corrections) {
@@ -174,7 +177,14 @@ export async function saveInvoiceWithLines(companyId, orderId, purchase, data, {
   const res = editing
     ? await updateInvoice(companyId, orderId, editing, payload, actor)
     : await addInvoice(companyId, orderId, purchase, payload, actor, { replaceLegacy });
-  return { ...res, id: editing?.id || res.id, appliedCorrections: applied };
+  const invoiceId = editing?.id || res.id;
+  // Evidencija upotrebe fiskalnog računa (zaštita od slučajnog duplog unosa); greška ne obara čuvanje računa
+  try {
+    const oldPfr = editing?.fiscal?.pfr, newPfr = payload.fiscal?.pfr;
+    if (oldPfr && oldPfr !== newPfr) await unregisterReceiptUse(companyId, oldPfr, invoiceId);
+    if (newPfr) await registerReceiptUse(companyId, newPfr, invoiceId, { orderId, orderNumber, supplierName: purchase.supplierName || "", number: payload.number || "", byName: actor.name });
+  } catch (e) { console.error("Evidencija fiskalnog računa nije upisana:", e); }
+  return { ...res, id: invoiceId, appliedCorrections: applied };
 }
 
 // Evidencija dodatne narudžbine napravljene za višak preuzete robe

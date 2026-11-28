@@ -8,7 +8,9 @@
 // ============================================================================
 import { t } from "./i18n.js";
 import { escapeHtml, toast, uid } from "./utils.js";
-import { getISO, initDatepickers } from "./datepicker.js";
+import { getISO, setISO, initDatepickers } from "./datepicker.js";
+import { openQrScanner } from "./qr-scanner.js";
+import { receiptToDraft, vatCheck } from "./fiscal-logic.js";
 import { round2, parseAmount, INVOICE_SOURCE } from "./invoice-logic.js";
 import {
   RESOLUTION, DEFAULT_VAT, MATCH_STATUS, lineAmounts, sumLines, lineProblems, isBlankLine, normalizeLine, linesFromItems, commonVatRate,
@@ -19,10 +21,15 @@ const h = escapeHtml;
 const fmt = (n) => (Number.isFinite(n) ? n.toFixed(2) : "");
 const qtyTxt = (n) => String(Math.round((Number(n) || 0) * 1000) / 1000);
 
+// Fiskalni račun (QR): dugme "Skeniraj QR" (kamera ili nalepljen link) preuzima račun preko Worker-a i popunjava
+// broj (PFR), datum, stavke (cene SA PDV-om, stopa po stavci) i kontrolni zbir; dalje ide isto usaglašavanje.
+// Isti račun može da se učita više puta (npr. za različite narudžbine) uz upozorenje gde je već unet.
+//
 // ctx: { companyId, orderId, uid, profile, currency, money, items (svi artikli narudžbine), canCreateSurplus,
-//        createSurplusOrder(rec, purchase, invoiceId) → Promise<{orderNumber}|null> }
+//        createSurplusOrder(rec, purchase, invoiceId) → Promise<{orderNumber}|null>,
+//        fetchReceipt(url) → Promise<receipt>, getReceiptUsage(pfr) → Promise<[{orderNumber, byName, ...}]> }
 // onSave(data, { corrections, draft, rec }) → Promise<{ id }>
-export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null, onSave }) {
+export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null, onSave, autoScan = false }) {
   const items = ctx.items.filter((i) => i.supplierId === purchase.supplierId);
   const itemById = Object.fromEntries(items.map((i) => [i.id, i]));
   const st = {
@@ -30,6 +37,7 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
     lines: (editing?.lines || []).map((l) => ({ ...l, resolution: l.resolution ?? RESOLUTION.NONE })),
     overrides: Object.fromEntries((editing?.pendingCorrections || []).map((c) => [c.itemId, Number(c.to)])),
     makeSurplus: false,
+    fiscal: editing?.fiscal || null,      // podaci fiskalnog računa (PFR, prodavac, rekapitulacija) ako je račun učitan QR kodom
   };
   if (!st.lines.length) st.lines.push(blank());
   function blank() { return { id: uid("ln"), name: "", code: "", unit: "", qty: "", unitPrice: "", discountPct: 0, vatRate: DEFAULT_VAT, netOverride: null, resolution: RESOLUTION.NONE, link: null }; }
@@ -46,6 +54,7 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
         <div class="field" style="align-self:end;"><label style="display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" id="il-incl" ${st.pricesIncludeVat ? "checked" : ""} /> ${t("inv_prices_incl_vat")}</label></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;">
+        <button type="button" class="btn btn-sm btn-primary" id="il-scan">📷 ${t("scan_btn")}</button>
         <button type="button" class="btn btn-sm btn-outline" id="il-add">＋ ${t("inv_add_line")}</button>
         <button type="button" class="btn btn-sm btn-outline" id="il-fill">📋 ${t("inv_fill_from_order")}</button>
         <button type="button" class="btn btn-sm btn-outline" id="il-match">🔗 ${t("inv_auto_match")}</button>
@@ -58,7 +67,8 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
         <div id="il-sumbox"></div>
         <div class="field" style="max-width:260px;"><label>${t("inv_control_gross")} (${h(ctx.currency)})</label>
           <input type="text" inputmode="decimal" id="il-control" value="${h(editing?.controlGross ?? "")}" />
-          <div id="il-diff" style="font-size:12px;margin-top:4px;"></div></div>
+          <div id="il-diff" style="font-size:12px;margin-top:4px;"></div>
+          <div id="il-taxcheck" style="font-size:12px;margin-top:4px;"></div></div>
       </div>
       <h3 style="margin:16px 0 6px;">${t("inv_reconcile_title")} <span id="il-match-badge"></span></h3>
       <div id="il-recon"></div>
@@ -85,6 +95,13 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
       <optgroup label="${h(t("inv_link_group_items"))}">${items.map((i) => o(`item:${i.id}`, `${i.substituteName || i.productName} (${qtyTxt(i.purchasedQty)} ${i.unit || ""})`)).join("")}</optgroup>
       <optgroup label="${h(t("inv_link_group_resolve"))}">${o(RESOLUTION.EXTRA, t("inv_link_extra"))}${o(RESOLUTION.SURPLUS, t("inv_link_surplus"))}</optgroup>`;
   };
+  const vatUnknown = (l) => l.vatRate === "" || l.vatRate === null || l.vatRate === undefined;
+  function vatOptions(l) {
+    const rates = [20, 10, 0];
+    if (!vatUnknown(l) && !rates.includes(Number(l.vatRate))) rates.push(Number(l.vatRate));      // npr. stopa sa računa koja nije standardna
+    return (vatUnknown(l) ? `<option value="" selected>?</option>` : "")
+      + rates.map((r) => `<option value="${r}" ${!vatUnknown(l) && Number(l.vatRate) === r ? "selected" : ""}>${r}%</option>`).join("");
+  }
   function renderLines() {
     $("#il-body").innerHTML = st.lines.map((l, i) => `
       <tr data-line="${l.id}">
@@ -95,7 +112,7 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
         <td><input type="text" class="l-unit" value="${h(l.unit || "")}" style="width:50px;" /></td>
         <td><input type="text" inputmode="decimal" class="l-price" value="${h(l.unitPrice ?? "")}" style="width:90px;" /></td>
         <td><input type="text" inputmode="decimal" class="l-disc" value="${h(l.discountPct ?? 0)}" style="width:55px;" /></td>
-        <td><select class="l-vat" style="width:70px;">${[20, 10, 0].map((r) => `<option value="${r}" ${Number(l.vatRate) === r ? "selected" : ""}>${r}%</option>`).join("")}</select></td>
+        <td><select class="l-vat" style="width:70px;">${vatOptions(l)}</select></td>
         <td><input type="text" inputmode="decimal" class="l-net" value="" style="width:100px;" /></td>
         <td class="mono l-gross"></td>
         <td style="min-width:210px;"><select class="l-link" style="width:100%;">${linkOptions(l)}</select> <span class="l-badge"></span></td>
@@ -114,6 +131,7 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
     const unresolved = l.resolution === RESOLUTION.NONE || (l.resolution === RESOLUTION.ITEM && !l.link);
     tr.querySelector(".l-badge").innerHTML = unresolved && !isBlankLine(l) ? `<span class="badge badge-amber">${t("inv_no_pair_badge")}</span>` : "";
     tr.style.background = unresolved && !isBlankLine(l) ? "var(--accent-amber-100, #fff7e6)" : "";
+    const sel = tr.querySelector(".l-vat"); if (sel) sel.style.outline = vatUnknown(l) && !isBlankLine(l) ? "2px solid var(--color-danger,#c0392b)" : "";
   }
   const real = () => st.lines.filter((l) => !isBlankLine(l));
 
@@ -133,6 +151,9 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
     const d = $("#il-diff");
     d.style.color = diff === null ? "inherit" : Math.abs(diff) < 0.015 ? "var(--color-success,#1e8449)" : "var(--color-danger,#c0392b)";
     d.textContent = diff === null ? "" : Math.abs(diff) < 0.015 ? t("inv_control_ok") : t("inv_control_diff", { diff: fmt(diff) });
+    const tc = $("#il-taxcheck"), vc = st.fiscal ? vatCheck(s.vat, st.fiscal.totalTax) : null;
+    tc.style.color = !vc ? "inherit" : vc.ok ? "var(--color-success,#1e8449)" : "var(--color-danger,#c0392b)";
+    tc.textContent = !vc ? "" : vc.ok ? t("fiscal_vat_ok", { vat: fmt(vc.reported) }) : t("fiscal_vat_diff", { reported: fmt(vc.reported), computed: fmt(vc.computed) });
     return s;
   }
   const rec = () => reconcile({ items, lines: real().map((l) => ({ ...l, qty: parseAmount(l.qty) })), overrides: st.overrides });
@@ -193,7 +214,7 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
   });
   body.addEventListener("change", (e) => {
     const l = lineOf(e.target), c = e.target.classList;
-    if (c.contains("l-vat")) { l.vatRate = Number(e.target.value); refreshLine(l); refreshAll(); }
+    if (c.contains("l-vat")) { l.vatRate = e.target.value === "" ? "" : Number(e.target.value); refreshLine(l); refreshAll(); }
     else if (c.contains("l-link")) {
       const v = e.target.value;
       if (v.startsWith("item:")) { l.resolution = RESOLUTION.ITEM; l.link = v.slice(5); const it = itemById[l.link]; if (it && !l.unit) l.unit = it.unit || ""; }
@@ -224,6 +245,42 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
   });
   $("#il-incl").addEventListener("change", (e) => { st.pricesIncludeVat = e.target.checked; st.lines.forEach((l) => { l.netOverride = null; }); renderLines(); });
 
+  // ---------- fiskalni račun (QR) ----------
+  async function importFromUrl(url) {
+    const err = $("#il-error"); err.textContent = "";
+    const scanBtn = $("#il-scan"); scanBtn.disabled = true;
+    try {
+      let rcpt;
+      try { rcpt = await ctx.fetchReceipt(url); }
+      catch (e) { err.textContent = t(`fiscal_err_${e.code || "generic"}`); return; }
+      let others = [];
+      try { others = (await ctx.getReceiptUsage(rcpt.pfr)).filter((u) => u.invoiceId !== editing?.id); } catch (e) { console.error(e); }
+      if (others.length) {
+        const list = others.map((u) => `• ${u.orderNumber || "—"}${u.supplierName ? ` · ${u.supplierName}` : ""}${u.byName ? ` (${u.byName})` : ""}`).join("\n");
+        if (!confirm(t("fiscal_dup_confirm", { pfr: rcpt.pfr, list }))) return;
+      }
+      if (real().length && !confirm(t("fiscal_replace_lines"))) return;
+      const draft = receiptToDraft(rcpt, { newId: () => uid("ln") });
+      st.lines = draft.lines.length ? draft.lines : [blank()];
+      st.pricesIncludeVat = true; $("#il-incl").checked = true;
+      st.fiscal = draft.fiscal; st.overrides = {};
+      $("#il-number").value = draft.number;
+      setISO($("#il-date"), draft.date);
+      // ranije upotrebljen račun se najčešće deli između narudžbina: kontrolni zbir ne popunjavamo
+      $("#il-control").value = others.length || draft.controlGross == null ? "" : String(draft.controlGross);
+      const found = autoMatch(real(), items);
+      found.forEach((m) => { const l = st.lines.find((x) => x.id === m.lineId); l.resolution = RESOLUTION.ITEM; l.link = m.itemId; });
+      renderLines();
+      toast(t("fiscal_loaded", { n: draft.lines.length, matched: found.length }), "success");
+      if (draft.unknownVat) err.textContent = t("fiscal_vat_unknown", { n: draft.unknownVat });
+    } finally { scanBtn.disabled = false; }
+  }
+  function startScan() {
+    if (!ctx.scanConfigured) { toast(t("fiscal_err_not_configured"), "error"); return; }
+    openQrScanner({ onUrl: importFromUrl });
+  }
+  $("#il-scan").addEventListener("click", startScan);
+
   const close = () => overlay.remove();
   overlay.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", close));
 
@@ -249,7 +306,8 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
     }
     const corrections = Object.entries(st.overrides).map(([itemId, to]) => ({ itemId, name: itemById[itemId]?.productName || "", from: Number(itemById[itemId]?.purchasedQty) || 0, to }));
     const data = {
-      number, date: getISO($("#il-date")), note: $("#il-note").value, currency: ctx.currency, source: INVOICE_SOURCE.FAKTURA,
+      number, date: getISO($("#il-date")), note: $("#il-note").value, currency: ctx.currency,
+      source: st.fiscal ? INVOICE_SOURCE.FISKALNI_QR : INVOICE_SOURCE.FAKTURA, fiscal: st.fiscal || null,
       lines: lines.map((l) => normalizeLine({ ...l, id: l.id }, opts())), pricesIncludeVat: st.pricesIncludeVat,
       controlGross: Number.isNaN(ctrl) ? null : ctrl, vatRate: commonVatRate(lines),
       netAmount: totals.net, vatAmount: totals.vat, grossAmount: totals.gross,
@@ -272,4 +330,5 @@ export function openInvoiceLinesModal({ purchase, invoices, ctx, editing = null,
   $("#il-confirm").addEventListener("click", () => save(false));
 
   renderLines();
+  if (autoScan) startScan();
 }

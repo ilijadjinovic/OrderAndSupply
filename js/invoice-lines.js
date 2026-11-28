@@ -60,6 +60,8 @@ export function lineProblems(line, opts = {}) {
   const q = toNum(line.qty);
   if (Number.isNaN(q) || q <= 0) errors.push("qty_invalid");
   if (!lineAmounts(line, opts).valid) errors.push("price_invalid");
+  // Stopa PDV-a nepoznata (npr. oznaka sa fiskalnog računa koja nije prepoznata): korisnik je mora izabrati
+  if (line.vatRate === "" || line.vatRate === null) errors.push("vat_missing");
   return errors;
 }
 
@@ -73,7 +75,7 @@ export function normalizeLine(l, opts = {}) {
     id: l.id, name: String(l.name || "").trim(), code: String(l.code || "").trim(), unit: String(l.unit || "").trim(),
     qty: round3(toNum(l.qty) || 0), unitPrice: Number.isNaN(toNum(l.unitPrice)) ? null : toNum(l.unitPrice),
     discountPct: Number.isNaN(toNum(l.discountPct)) ? 0 : toNum(l.discountPct),
-    vatRate: Number.isNaN(toNum(l.vatRate)) ? DEFAULT_VAT : toNum(l.vatRate),
+    vatRate: l.vatRate === "" || l.vatRate === null ? null : (Number.isNaN(toNum(l.vatRate)) ? DEFAULT_VAT : toNum(l.vatRate)),
     netOverride: Number.isNaN(ov) ? null : ov,
     net: a.net, vat: a.vat, gross: a.gross,
     link: l.resolution === RESOLUTION.ITEM ? (l.link || null) : null,
